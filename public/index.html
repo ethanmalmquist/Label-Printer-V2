@@ -250,6 +250,20 @@
       margin-bottom: 6px;
     }
 
+    :root {
+      --map-area-bg: #eef4ff;
+      --map-section-bg: #d6fbfb;
+      --map-section-border: #9ee5e4;
+      --map-section-title-bg: #0f766e;
+      --map-section-title-border: #0f766e;
+      --map-section-title-text: #ffffff;
+      --map-empty-bg: #ffffff;
+      --map-occupied-bg: #93c5fd;
+      --map-rental-ready-bg: #86efac;
+      --map-attention-bg: #fdba74;
+      --map-sold-hold-bg: #fca5a5;
+    }
+
 
     .showroom-map-card {
       background: #fff;
@@ -282,17 +296,62 @@
     }
 
     .showroom-map-legend {
-      display: flex;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(160px, 1fr));
       gap: 8px;
-      flex-wrap: wrap;
       justify-content: flex-end;
-      align-items: center;
+      align-items: stretch;
+      max-width: 520px;
+    }
+
+    .map-legend-item {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      padding: 8px 10px;
+      display: grid;
+      grid-template-columns: 18px 1fr;
+      gap: 8px;
+      align-items: start;
+      font-size: 12px;
+      line-height: 1.3;
+      color: #334155;
+    }
+
+    .map-legend-swatch {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      border: 1px solid var(--border-dark);
+      margin-top: 1px;
+    }
+
+    .map-legend-swatch.empty { background: var(--map-empty-bg); }
+    .map-legend-swatch.available { background: var(--map-occupied-bg); }
+    .map-legend-swatch.rental-ready { background: var(--map-rental-ready-bg); }
+    .map-legend-swatch.needs-attention { background: var(--map-attention-bg); }
+    .map-legend-swatch.sold-hold { background: var(--map-sold-hold-bg); }
+
+    .map-legend-text strong {
+      display: block;
+      color: var(--brand-blue-dark);
+      margin-bottom: 2px;
+    }
+
+    .side-panel .showroom-map-legend {
+      grid-template-columns: 1fr;
+      max-width: none;
+      justify-content: stretch;
+    }
+
+    .side-panel .map-legend-item {
+      background: #fafafa;
     }
 
     .showroom-map-stage {
       border: 1px solid var(--border);
       border-radius: 12px;
-      background: #dffafa;
+      background: var(--map-area-bg);
       padding: 14px;
       overflow-x: auto;
     }
@@ -318,8 +377,8 @@
     }
 
     .showroom-section {
-      border: 1px solid #9ee5e4;
-      background: #d6fbfb;
+      border: 1px solid var(--map-section-border);
+      background: var(--map-section-bg);
       border-radius: 4px;
       padding: 8px;
       display: grid;
@@ -329,9 +388,9 @@
 
     .showroom-section-title {
       justify-self: center;
-      background: #6fe4dd;
-      border: 1px solid #0f766e;
-      color: #042f2e;
+      background: var(--map-section-title-bg);
+      border: 1px solid var(--map-section-title-border);
+      color: var(--map-section-title-text);
       border-radius: 5px;
       font-weight: 800;
       font-size: 13px;
@@ -358,7 +417,7 @@
       min-height: 32px;
       border-right: 1px solid #9ca3af;
       border-bottom: 1px solid #9ca3af;
-      background: #fff;
+      background: var(--map-empty-bg);
       color: #334155;
       display: flex;
       align-items: center;
@@ -376,34 +435,34 @@
     }
 
     .showroom-bay-cell.open-space {
-      background: #d6fbfb;
+      background: var(--map-section-bg);
       border-right: none;
       border-bottom: none;
       cursor: default;
     }
 
     .showroom-bay-cell.occupied {
-      background: var(--brand-blue-soft);
-      color: var(--brand-blue-dark);
-      font-weight: 800;
+      background: var(--map-occupied-bg);
+      color: #0f172a;
+      font-weight: 900;
     }
 
     .showroom-bay-cell.rental-ready {
-      background: var(--brand-green-soft);
-      color: #237804;
-      font-weight: 800;
+      background: var(--map-rental-ready-bg);
+      color: #064e3b;
+      font-weight: 900;
     }
 
     .showroom-bay-cell.needs-attention {
-      background: var(--warning-soft);
-      color: #ad6800;
-      font-weight: 800;
+      background: var(--map-attention-bg);
+      color: #7c2d12;
+      font-weight: 900;
     }
 
     .showroom-bay-cell.sold-hold {
-      background: var(--danger-soft);
-      color: #a8071a;
-      font-weight: 800;
+      background: var(--map-sold-hold-bg);
+      color: #7f1d1d;
+      font-weight: 900;
     }
 
     .showroom-bay-cell:hover:not(.open-space) {
@@ -459,6 +518,219 @@
     .showroom-detail-row strong {
       color: var(--brand-blue-dark);
       text-align: right;
+    }
+
+
+    .property-map-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .property-map-controls label {
+      color: var(--brand-blue-dark);
+      font-weight: 800;
+      font-size: 13px;
+    }
+
+    .property-map-controls select {
+      width: auto;
+      min-width: 210px;
+      height: 34px;
+    }
+
+    .property-full-map-grid {
+      display: grid;
+      grid-template-columns: minmax(320px, 0.75fr) minmax(560px, 1.25fr);
+      gap: 20px;
+      align-items: start;
+      min-width: 940px;
+      padding: 6px;
+    }
+
+    .property-map-cluster {
+      border: 1px dashed #cbd5e1;
+      border-radius: 10px;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.55);
+      min-width: 0;
+      overflow-x: auto;
+    }
+
+    .property-map-cluster.wide {
+      grid-column: 1 / -1;
+    }
+
+    .property-map-cluster-title {
+      display: inline-flex;
+      align-items: center;
+      background: var(--map-section-title-bg);
+      border: 1px solid var(--map-section-title-border);
+      color: var(--map-section-title-text);
+      border-radius: 5px;
+      font-weight: 800;
+      font-size: 12px;
+      padding: 3px 8px;
+      margin-bottom: 8px;
+    }
+
+    .property-map-grid {
+      display: grid;
+      gap: 12px;
+      align-items: stretch;
+      min-width: 540px;
+    }
+
+    .property-map-grid.transportation-view {
+      grid-template-columns: repeat(2, minmax(145px, 1fr));
+      min-width: 340px;
+    }
+
+    .property-map-grid.showroom-view {
+      grid-template-columns: repeat(3, minmax(145px, 1fr));
+    }
+
+    .property-map-grid.showroom-view .sales-section {
+      grid-column: 1 / -1;
+    }
+
+    .property-map-grid.yard-view {
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      min-width: 760px;
+      align-items: end;
+    }
+
+    .property-map-grid.sales-view {
+      grid-template-columns: minmax(280px, 420px);
+      min-width: 320px;
+    }
+
+    .property-map-grid.compact {
+      min-width: 0;
+      gap: 8px;
+    }
+
+    .property-map-grid.compact .showroom-section {
+      padding: 5px;
+      gap: 6px;
+    }
+
+    .property-map-grid.compact .showroom-section-title {
+      max-width: 92px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 11px;
+      padding: 3px 6px;
+    }
+
+    .property-map-grid.compact .showroom-bay-column {
+      grid-template-rows: repeat(var(--slot-count, 19), 18px);
+      min-width: 28px;
+    }
+
+    .property-map-grid.compact .showroom-bay-cell {
+      min-height: 18px;
+      font-size: 8px;
+      padding: 1px;
+    }
+
+    .property-map-grid.compact .showroom-column-label {
+      height: 24px;
+      font-size: 10px;
+    }
+
+    .showroom-map-stage.transportation-stage {
+      background: #eff6ff;
+    }
+
+    .showroom-map-stage.showroom-stage {
+      background: #ecfeff;
+    }
+
+    .showroom-map-stage.yard-stage {
+      background: #fff7ed;
+    }
+
+    .showroom-map-stage.full-property-stage {
+      background: #f8fafc;
+    }
+
+    .showroom-map-stage.sales-stage {
+      background: #faf5ff;
+    }
+
+    .showroom-section.transportation-section {
+      background: #dbeafe;
+      border-color: #2563eb;
+    }
+
+    .showroom-section.yard-section {
+      background: #fed7aa;
+      border-color: #ea580c;
+    }
+
+    .showroom-section.sales-section {
+      background: #f3e8ff;
+      border-color: #9333ea;
+    }
+
+    .showroom-section:not(.transportation-section):not(.yard-section):not(.sales-section) {
+      background: #ccfbf1;
+      border-color: #0f766e;
+    }
+
+    .showroom-section-title.transportation-title {
+      background: #2563eb;
+      border-color: #1d4ed8;
+      color: #ffffff;
+    }
+
+    .showroom-section-title.yard-title {
+      background: #ea580c;
+      border-color: #c2410c;
+      color: #ffffff;
+    }
+
+    .showroom-section-title.sales-title {
+      background: #9333ea;
+      border-color: #7e22ce;
+      color: #ffffff;
+    }
+
+    .showroom-section-title:not(.transportation-title):not(.yard-title):not(.sales-title) {
+      background: #0f766e;
+      border-color: #0f766e;
+      color: #ffffff;
+    }
+
+    .sales-row-wrap {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(38px, 1fr));
+      border-left: 1px solid #9ca3af;
+      border-top: 1px solid #9ca3af;
+      background: #fff;
+    }
+
+    .sales-row-wrap .showroom-bay-cell {
+      min-height: 34px;
+    }
+
+    @media (max-width: 1200px) {
+      .property-full-map-grid {
+        grid-template-columns: 1fr;
+        min-width: 0;
+      }
+
+      .property-map-grid,
+      .property-map-grid.yard-view,
+      .property-map-grid.showroom-view,
+      .property-map-grid.transportation-view,
+      .property-map-grid.sales-view {
+        min-width: 0;
+      }
     }
 
     .inventory-placeholder-list {
@@ -2455,7 +2727,7 @@
               <h1>Equipment Yard Inventory</h1>
             </div>
             <p class="subtitle">
-              Track equipment placement across the yard, showroom, shop, rental-ready area, and staging zones.
+              Track equipment placement across Transportation Bay, Showroom, and Outside Yard map locations.
             </p>
           </div>
 
@@ -2465,77 +2737,61 @@
                 <article class="inventory-card">
                   <div id="yardTotalCount" class="inventory-stat">0</div>
                   <h2>Total Units</h2>
-                  <p>All saved equipment placement rows.</p>
+                  <p>All filled map spots with equipment assigned.</p>
                 </article>
 
                 <article class="inventory-card">
-                  <div id="yardInYardCount" class="inventory-stat">0</div>
-                  <h2>In Yard</h2>
-                  <p>Units placed in any yard area.</p>
+                  <div id="yardTransportationCount" class="inventory-stat">0</div>
+                  <h2>In Transportation Bay</h2>
+                  <p>Units staged in inbound or outbound transportation bays.</p>
                 </article>
 
                 <article class="inventory-card">
                   <div id="yardShowroomCount" class="inventory-stat">0</div>
                   <h2>In Showroom</h2>
-                  <p>Units currently on showroom placement.</p>
+                  <p>Units placed in Showroom Sections 1, 2, 3, or Sold Lane.</p>
                 </article>
 
                 <article class="inventory-card">
-                  <div id="yardRentalReadyCount" class="inventory-stat">0</div>
-                  <h2>Rental Ready</h2>
-                  <p>Units staged as rental ready.</p>
+                  <div id="yardOutsideCount" class="inventory-stat">0</div>
+                  <h2>Outside Yard</h2>
+                  <p>Total units assigned to outside yard sections.</p>
                 </article>
 
                 <article class="inventory-card">
-                  <div id="yardNeedsAttentionCount" class="inventory-stat">0</div>
-                  <h2>Needs Attention</h2>
-                  <p>Missing placement, blocked, damaged, or requiring review.</p>
+                  <div id="yardRentalsCount" class="inventory-stat">0</div>
+                  <h2>Rentals</h2>
+                  <p>Units assigned to Outside Yard Rental rows I and J.</p>
+                </article>
+
+                <article class="inventory-card">
+                  <div id="yardInServiceCount" class="inventory-stat">0</div>
+                  <h2>In Service</h2>
+                  <p>Units marked with In Service availability status.</p>
                 </article>
               </section>
 
               <section class="showroom-map-card">
                 <div class="showroom-map-header">
                   <div>
-                    <h2>Showroom Location Map</h2>
-                    <p>View Section 5, Section 6, and Section 7 bays. Bay 19 is furthest from the entrance and Bay 1 is closest.</p>
-                  </div>
-                  <div class="showroom-map-legend">
-                    <span class="pill">White = Empty</span>
-                    <span class="pill connected">Green = Rental Ready</span>
-                    <span class="pill checking">Orange = Needs Attention</span>
-                    <span class="pill disconnected">Red = Hold / Sold</span>
+                    <h2>Equipment Location Map</h2>
+                    <p>View equipment placement by property area. Use Full Property View for a top-down overview, or open one area to manage individual bays.</p>
                   </div>
                 </div>
 
-                <div class="showroom-map-stage">
-                  <div class="showroom-orientation-note">
-                    <span>Entrance / customer side is bottom-left</span>
-                    <span>Furthest from entrance</span>
-                  </div>
+                <div class="property-map-controls" style="margin-bottom: 12px;">
+                  <label for="propertyMapViewSelect">Map View</label>
+                  <select id="propertyMapViewSelect" onchange="renderShowroomMap()">
+                    <option value="full" selected>Full Property View (showing all locations)</option>
+                    <option value="transportation">Transportation Bay (Outbound and Inbound)</option>
+                    <option value="showroom">Showroom (Sections 1, 2, 3 and Sold Lane)</option>
+                    <option value="yard">Outside Yard (Sections 1, 2, 3, 4 and Rental)</option>
+                  </select>
+                </div>
+
+                <div id="showroomMapStage" class="showroom-map-stage full-property-stage">
                   <div id="showroomMapGrid" class="showroom-map-grid"></div>
-                  <div id="showroomMapSummary" class="showroom-map-summary">Loading showroom map...</div>
-
-                  <div id="showroomInlineAddCard" class="saved-table-card" style="display: none; margin-top: 16px; background: #fff;">
-                    <div class="saved-table-header">
-                      <div>
-                        <h3>Add Equipment Placement</h3>
-                        <p id="showroomInlineAddDescription">Select an empty showroom bay to add equipment to that location.</p>
-                      </div>
-                      <button class="secondary" type="button" onclick="closeShowroomInlineAddForm()">Cancel</button>
-                    </div>
-
-                    <div id="showroomInlineAddMessage" class="excel-message">Enter the equipment details, then save the placement.</div>
-
-                    <div id="showroomInlineAddFields" class="excel-field-grid" style="margin-top: 12px;">
-                      <div class="excel-empty-state">Click an empty location and choose Add Unit Here to open this form.</div>
-                    </div>
-
-                    <div class="excel-actions-row" style="margin-top: 14px;">
-                      <button class="primary" type="button" onclick="saveShowroomInlineAddedYardRow()">Add Equipment Placement</button>
-                      <button class="secondary" type="button" onclick="closeShowroomInlineAddForm()">Cancel</button>
-                      <button class="secondary" type="button" onclick="clearShowroomInlineAddDetails()">Clear Details</button>
-                    </div>
-                  </div>
+                  <div id="showroomMapSummary" class="showroom-map-summary">Loading property map...</div>
                 </div>
               </section>
 
@@ -2610,7 +2866,12 @@
 
                     <div class="excel-field">
                       <label for="yardEquipmentTypeInput">Equipment Type</label>
-                      <input id="yardEquipmentTypeInput" type="text" placeholder="Example: Forklift" />
+                      <select id="yardEquipmentTypeInput">
+                        <option value="Forklift">Forklift</option>
+                        <option value="Scissor Lift">Scissor Lift</option>
+                        <option value="Piggyback">Piggyback</option>
+                        <option value="Order Picker">Order Picker</option>
+                      </select>
                     </div>
 
                     <div class="excel-field">
@@ -2629,39 +2890,54 @@
                     </div>
 
                     <div class="excel-field">
+                      <label for="yardHoursInput">Hours</label>
+                      <input id="yardHoursInput" type="number" min="0" step="0.1" placeholder="Example: 2450" />
+                    </div>
+
+                    <div class="excel-field">
+                      <label for="yardCapacityInput">Capacity</label>
+                      <input id="yardCapacityInput" type="text" placeholder="Example: 5000 lb" />
+                    </div>
+
+                    <div class="excel-field">
+                      <label for="yardTireTypeInput">Tire Type</label>
+                      <input id="yardTireTypeInput" type="text" placeholder="Example: Cushion" />
+                    </div>
+
+                    <div class="excel-field">
+                      <label for="yardFuelTypeInput">Fuel Type</label>
+                      <input id="yardFuelTypeInput" type="text" placeholder="Example: Propane" />
+                    </div>
+
+                    <div class="excel-field">
+                      <label for="yardMastRaisedInput">Mast Raised</label>
+                      <input id="yardMastRaisedInput" type="text" placeholder="Example: 189 in" />
+                    </div>
+
+                    <div class="excel-field">
+                      <label for="yardMastLoweredInput">Mast Lowered</label>
+                      <input id="yardMastLoweredInput" type="text" placeholder="Example: 83 in" />
+                    </div>
+
+                    <div class="excel-field">
+                      <label for="yardAttachmentInput">Attachment</label>
+                      <input id="yardAttachmentInput" type="text" placeholder="Example: Side Shifter" />
+                    </div>
+
+                    <div class="excel-field">
                       <label for="yardAreaInput">Area</label>
-                      <select id="yardAreaInput">
-                        <option value="Yard">Yard</option>
+                      <select id="yardAreaInput" onchange="syncYardAreaZoneInputs()">
+                        <option value="Transportation Bay">Transportation Bay</option>
                         <option value="Showroom">Showroom</option>
-                        <option value="Shop">Shop</option>
-                        <option value="Rental Ready">Rental Ready</option>
-                        <option value="Sold Staging">Sold Staging</option>
-                        <option value="Service Hold">Service Hold</option>
-                        <option value="Wash Bay">Wash Bay</option>
-                        <option value="Delivery Staging">Delivery Staging</option>
-                        <option value="Offsite">Offsite</option>
-                        <option value="Unknown">Unknown</option>
+                        <option value="Yard">Yard</option>
                       </select>
                     </div>
 
                     <div class="excel-field">
                       <label for="yardZoneInput">Zone</label>
                       <select id="yardZoneInput">
-                        <option value="North Yard">North Yard</option>
-                        <option value="South Yard">South Yard</option>
-                        <option value="East Yard">East Yard</option>
-                        <option value="West Yard">West Yard</option>
-                        <option value="Showroom Floor">Showroom Floor</option>
-                        <option value="Section 5">Section 5</option>
-                        <option value="Section 6">Section 6</option>
-                        <option value="Section 7">Section 7</option>
-                        <option value="Shop Bay">Shop Bay</option>
-                        <option value="Wash Bay">Wash Bay</option>
-                        <option value="Delivery Lane">Delivery Lane</option>
-                        <option value="Rental Line">Rental Line</option>
-                        <option value="Sold Line">Sold Line</option>
-                        <option value="Offsite">Offsite</option>
-                        <option value="Unknown">Unknown</option>
+                        <option value="Outbound">Outbound</option>
+                        <option value="Inbound">Inbound</option>
                       </select>
                     </div>
 
@@ -2673,18 +2949,6 @@
                     <div class="excel-field">
                       <label for="yardSlotInput">Slot</label>
                       <input id="yardSlotInput" type="text" placeholder="Example: 19" />
-                    </div>
-
-                    <div class="excel-field">
-                      <label for="yardDisplayPositionInput">Display Position</label>
-                      <select id="yardDisplayPositionInput">
-                        <option value="Front Row">Front Row</option>
-                        <option value="Middle Row">Middle Row</option>
-                        <option value="Back Row">Back Row</option>
-                        <option value="Indoor Display">Indoor Display</option>
-                        <option value="Outdoor Display">Outdoor Display</option>
-                        <option value="Not Displayed">Not Displayed</option>
-                      </select>
                     </div>
 
                     <div class="excel-field">
@@ -2766,16 +3030,9 @@
                       <label for="yardAreaFilter">Area</label>
                       <select id="yardAreaFilter" onchange="renderYardInventoryTable()">
                         <option value="">All areas</option>
-                        <option value="Yard">Yard</option>
+                        <option value="Transportation Bay">Transportation Bay</option>
                         <option value="Showroom">Showroom</option>
-                        <option value="Shop">Shop</option>
-                        <option value="Rental Ready">Rental Ready</option>
-                        <option value="Sold Staging">Sold Staging</option>
-                        <option value="Service Hold">Service Hold</option>
-                        <option value="Wash Bay">Wash Bay</option>
-                        <option value="Delivery Staging">Delivery Staging</option>
-                        <option value="Offsite">Offsite</option>
-                        <option value="Unknown">Unknown</option>
+                        <option value="Yard">Yard</option>
                       </select>
                     </div>
 
@@ -2845,7 +3102,7 @@
                     <div class="timeline-dot">✓</div>
                     <div>
                       <div class="timeline-title">Assign Placement</div>
-                      <div class="timeline-subtitle">Set Area, Zone, Row, Slot, and Display Position.</div>
+                      <div class="timeline-subtitle">Set Area, Zone, Row, and Slot.</div>
                     </div>
                   </div>
 
@@ -2893,6 +3150,32 @@
                 <div class="summary-row">
                   <span>Bulk Import</span>
                   <strong>Excel copy-paste supported</strong>
+                </div>
+              </section>
+
+              <section class="summary-card">
+                <h3>Map Legend</h3>
+                <div class="showroom-map-legend" aria-label="Equipment location legend">
+                  <div class="map-legend-item">
+                    <span class="map-legend-swatch empty"></span>
+                    <span class="map-legend-text"><strong>Empty</strong>No equipment assigned to this bay.</span>
+                  </div>
+                  <div class="map-legend-item">
+                    <span class="map-legend-swatch available"></span>
+                    <span class="map-legend-text"><strong>Available / Occupied</strong>Equipment is assigned and has no warning status.</span>
+                  </div>
+                  <div class="map-legend-item">
+                    <span class="map-legend-swatch rental-ready"></span>
+                    <span class="map-legend-text"><strong>Rental Ready</strong>Unit is staged and ready for rental use.</span>
+                  </div>
+                  <div class="map-legend-item">
+                    <span class="map-legend-swatch needs-attention"></span>
+                    <span class="map-legend-text"><strong>Needs Attention</strong>Condition is not Ready or the unit needs review.</span>
+                  </div>
+                  <div class="map-legend-item">
+                    <span class="map-legend-swatch sold-hold"></span>
+                    <span class="map-legend-text"><strong>Hold / Sold / Reserved</strong>Unit is sold, reserved, or on customer hold.</span>
+                  </div>
                 </div>
               </section>
 
@@ -3039,7 +3322,7 @@
       <div class="edit-row-modal-header">
         <div>
           <h2 id="yardAddTitle">Add Equipment Placement</h2>
-          <p id="yardAddDescription">Add a new equipment placement row. The selected showroom location is prefilled when launched from the map.</p>
+          <p id="yardAddDescription">Add a new equipment placement row. The selected map location is prefilled when launched from the map.</p>
         </div>
         <button class="secondary bulk-close-button" type="button" onclick="closeYardAddModal()">×</button>
       </div>
@@ -3047,7 +3330,7 @@
       <div id="yardAddMessage" class="edit-row-message">Enter the equipment details, then save the placement.</div>
 
       <div id="yardAddFields" class="excel-field-grid" style="margin-top: 14px;">
-        <div class="excel-empty-state">Open this modal from Add Unit Here to prefill a showroom bay.</div>
+        <div class="excel-empty-state">Open this modal from Add Unit Here to prefill a mapped location.</div>
       </div>
 
       <div class="modal-actions" style="margin-top: 16px;">
@@ -5866,41 +6149,19 @@
 
 
     const YARD_AREA_VALUES = [
-      "Yard",
+      "Transportation Bay",
       "Showroom",
-      "Shop",
-      "Rental Ready",
-      "Sold Staging",
-      "Service Hold",
-      "Wash Bay",
-      "Delivery Staging",
-      "Offsite",
-      "Unknown",
+      "Yard",
     ];
     const YARD_ZONE_VALUES = [
-      "North Yard",
-      "South Yard",
-      "East Yard",
-      "West Yard",
-      "Showroom Floor",
-      "Section 5",
-      "Section 6",
-      "Section 7",
-      "Shop Bay",
-      "Wash Bay",
-      "Delivery Lane",
-      "Rental Line",
-      "Sold Line",
-      "Offsite",
-      "Unknown",
-    ];
-    const YARD_DISPLAY_VALUES = [
-      "Front Row",
-      "Middle Row",
-      "Back Row",
-      "Indoor Display",
-      "Outdoor Display",
-      "Not Displayed",
+      "Outbound",
+      "Inbound",
+      "Section 1",
+      "Section 2",
+      "Section 3",
+      "Section 4",
+      "Sold Lane",
+      "Rental",
     ];
     const YARD_AVAILABILITY_VALUES = [
       "Available",
@@ -5925,51 +6186,282 @@
       "Unknown",
     ];
     const YARD_CUSTOMER_HOLD_VALUES = ["No", "Yes"];
-    const SHOWROOM_SECTION_LAYOUT = [
-      { zone: "Section 5", columns: ["A", "B"] },
-      { zone: "Section 6", columns: ["C", "D"] },
-      { zone: "Section 7", columns: ["E", "F"] },
+    const YARD_EQUIPMENT_TYPE_VALUES = [
+      "Forklift",
+      "Scissor Lift",
+      "Piggyback",
+      "Order Picker",
     ];
-    const SHOWROOM_SLOTS_DESC = [19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+    const YARD_ZONE_VALUES_BY_AREA = {
+      "Transportation Bay": ["Outbound", "Inbound"],
+      Showroom: ["Section 1", "Section 2", "Section 3", "Sold Lane"],
+      Yard: ["Section 1", "Section 2", "Section 3", "Section 4", "Rental"],
+    };
 
-    function normalizeShowroomZone(value) {
+    function getYardZoneValuesForArea(area) {
+      const normalizedArea = normalizePropertyArea(area || "Yard");
+      return YARD_ZONE_VALUES_BY_AREA[normalizedArea] || [];
+    }
+
+    function populateSelectOptions(select, values, selectedValue = "") {
+      if (!select) {
+        return;
+      }
+
+      const normalizedSelected = String(selectedValue || "").trim();
+      select.innerHTML = "";
+
+      values.forEach((optionValue) => {
+        const option = document.createElement("option");
+        option.value = optionValue;
+        option.textContent = optionValue;
+        select.appendChild(option);
+      });
+
+      if (normalizedSelected && values.some((value) => value.toLowerCase() === normalizedSelected.toLowerCase())) {
+        const match = values.find((value) => value.toLowerCase() === normalizedSelected.toLowerCase());
+        select.value = match;
+      } else {
+        select.value = values[0] || "";
+      }
+    }
+
+    function syncZoneSelectForArea(areaSelect, zoneSelect, preferredZone = "") {
+      if (!areaSelect || !zoneSelect) {
+        return;
+      }
+
+      const area = normalizePropertyArea(areaSelect.value || "Yard");
+      areaSelect.value = area;
+      populateSelectOptions(zoneSelect, getYardZoneValuesForArea(area), normalizePropertyZone(preferredZone || zoneSelect.value));
+    }
+
+    function syncYardAreaZoneInputs() {
+      const areaSelect = document.getElementById("yardAreaInput");
+      const zoneSelect = document.getElementById("yardZoneInput");
+      syncZoneSelectForArea(areaSelect, zoneSelect);
+    }
+
+    function setupAreaZoneDependency(scopeSelector, areaDataAttribute, zoneDataAttribute, preferredZone = "") {
+      const scope = scopeSelector ? document.querySelector(scopeSelector) : document;
+      if (!scope) {
+        return;
+      }
+
+      const areaSelect = scope.querySelector(`[${areaDataAttribute}="Area"]`);
+      const zoneSelect = scope.querySelector(`[${zoneDataAttribute}="Zone"]`);
+
+      if (!areaSelect || !zoneSelect) {
+        return;
+      }
+
+      syncZoneSelectForArea(areaSelect, zoneSelect, preferredZone);
+      areaSelect.addEventListener("change", () => syncZoneSelectForArea(areaSelect, zoneSelect));
+    }
+
+    const PROPERTY_MAP_VIEW_LABELS = {
+      full: "Full Property View",
+      transportation: "Transportation Bay",
+      showroom: "Showroom",
+      yard: "Outside Yard",
+    };
+    const PROPERTY_MAP_LAYOUTS = {
+      transportation: {
+        title: "Transportation Bay",
+        stageClass: "transportation-stage",
+        gridClass: "transportation-view",
+        note: "Transportation Bay stages inbound units coming off trucks and outbound units being prepared for shipment.",
+        sections: [
+          { area: "Transportation Bay", zone: "Outbound", columns: ["A", "B"], minSlot: 1, maxSlot: 10, style: "transportation" },
+          { area: "Transportation Bay", zone: "Inbound", columns: ["C", "D"], minSlot: 1, maxSlot: 10, style: "transportation" },
+        ],
+      },
+      showroom: {
+        title: "Showroom",
+        stageClass: "showroom-stage",
+        gridClass: "showroom-view",
+        note: "Showroom bays render with the furthest spots at the top and the entrance/customer side at the bottom-left.",
+        sections: [
+          { area: "Showroom", zone: "Section 1", columns: ["A", "B"], minSlot: 1, maxSlot: 19, style: "showroom", openSpaces: { A: [1, 2, 3, 4, 5, 6] } },
+          { area: "Showroom", zone: "Section 2", columns: ["C", "D"], minSlot: 1, maxSlot: 19, style: "showroom" },
+          { area: "Showroom", zone: "Section 3", columns: ["E", "F"], minSlot: 1, maxSlot: 19, style: "showroom" },
+          { area: "Showroom", zone: "Sold Lane", columns: ["Sold Lane"], minSlot: 1, maxSlot: 7, style: "sales", horizontal: true },
+        ],
+      },
+      yard: {
+        title: "Outside Yard",
+        stageClass: "yard-stage",
+        gridClass: "yard-view",
+        note: "Outside Yard includes immobile/storage sections plus Rental rows I and J.",
+        sections: [
+          { area: "Yard", zone: "Section 1", columns: ["A", "B"], minSlot: 1, maxSlot: 13, style: "yard" },
+          { area: "Yard", zone: "Section 2", columns: ["C", "D"], minSlot: 1, maxSlot: 13, style: "yard" },
+          { area: "Yard", zone: "Section 3", columns: ["E", "F"], minSlot: 1, maxSlot: 16, style: "yard" },
+          { area: "Yard", zone: "Section 4", columns: ["G", "H"], minSlot: 1, maxSlot: 16, style: "yard" },
+          { area: "Yard", zone: "Rental", columns: ["I", "J"], minSlot: 1, maxSlot: 16, style: "yard" },
+        ],
+      },
+    };
+    const FULL_PROPERTY_VIEW_ORDER = ["transportation", "showroom", "yard"];
+
+    function normalizePropertyArea(value) {
       const text = String(value ?? "").trim().toLowerCase();
 
-      if (["section 5", "5", "showroom section 5"].includes(text)) return "Section 5";
-      if (["section 6", "6", "showroom section 6"].includes(text)) return "Section 6";
-      if (["section 7", "7", "showroom section 7"].includes(text)) return "Section 7";
+      if (["transportation bay", "transport", "transportation", "shipping", "receiving"].includes(text)) return "Transportation Bay";
+      if (["showroom", "show room"].includes(text)) return "Showroom";
+      if (["yard", "outside yard", "outdoor yard"].includes(text)) return "Yard";
 
       return String(value ?? "").trim();
     }
 
-    function normalizeShowroomColumn(value) {
-      return String(value ?? "").trim().toUpperCase();
+    function normalizePropertyZone(value) {
+      const text = String(value ?? "").trim().toLowerCase();
+
+      if (["outbound", "out bound"].includes(text)) return "Outbound";
+      if (["inbound", "in bound"].includes(text)) return "Inbound";
+      if (["section 1", "1", "section 5", "5", "section 10", "10", "showroom section 5", "yard section 10"].includes(text)) return "Section 1";
+      if (["section 2", "2", "section 6", "6", "section 14", "14", "showroom section 6", "yard section 14"].includes(text)) return "Section 2";
+      if (["section 3", "3", "section 7", "7", "section 11", "11", "showroom section 7", "yard section 11"].includes(text)) return "Section 3";
+      if (["section 4", "4", "section 12", "12", "yard section 12"].includes(text)) return "Section 4";
+      if (["sold lane", "sold", "sales", "sales row"].includes(text)) return "Sold Lane";
+      if (["rental", "rental row", "rental line"].includes(text)) return "Rental";
+
+      return String(value ?? "").trim();
     }
 
-    function normalizeShowroomSlot(value) {
+    function normalizePropertyColumn(value) {
+      const text = String(value ?? "").trim();
+      return ["sales", "sales row", "sold lane", "sold"].includes(text.toLowerCase()) ? "Sold Lane" : text.toUpperCase();
+    }
+
+    function normalizePropertySlot(value) {
       const match = String(value ?? "").trim().match(/\d+/);
       return match ? String(Number(match[0])) : "";
     }
 
+    function getPropertyMapView() {
+      const select = document.getElementById("propertyMapViewSelect");
+      return select ? select.value : "full";
+    }
+
+    function getSectionSlotsDesc(section) {
+      const slots = [];
+      for (let slot = section.maxSlot; slot >= section.minSlot; slot -= 1) {
+        slots.push(slot);
+      }
+      return slots;
+    }
+
+    function getPropertyLocationKey(area, zone, column, slot) {
+      return `${normalizePropertyArea(area)}|${normalizePropertyZone(zone)}|${normalizePropertyColumn(column)}|${normalizePropertySlot(slot)}`;
+    }
+
     function getShowroomBayKey(zone, column, slot) {
-      return `${normalizeShowroomZone(zone)}|${normalizeShowroomColumn(column)}|${normalizeShowroomSlot(slot)}`;
+      return getPropertyLocationKey("Showroom", zone, column, slot);
+    }
+
+    function getLocationRule(area, zone, column, slot) {
+      const normalizedArea = normalizePropertyArea(area);
+      const normalizedZone = normalizePropertyZone(zone);
+      const normalizedColumn = normalizePropertyColumn(column);
+      const normalizedSlot = Number(normalizePropertySlot(slot));
+
+      const sections = Object.values(PROPERTY_MAP_LAYOUTS).flatMap((layout) => layout.sections);
+
+      return sections.find((section) => {
+        if (section.area !== normalizedArea || section.zone !== normalizedZone) {
+          return false;
+        }
+
+        if (!section.columns.includes(normalizedColumn) || !Number.isInteger(normalizedSlot)) {
+          return false;
+        }
+
+        if (section.openSpaces?.[normalizedColumn]?.includes(normalizedSlot)) {
+          return false;
+        }
+
+        return normalizedSlot >= section.minSlot && normalizedSlot <= section.maxSlot;
+      }) || null;
+    }
+
+    function isMappedLocationAreaZone(area, zone) {
+      const normalizedArea = normalizePropertyArea(area);
+      const normalizedZone = normalizePropertyZone(zone);
+      const sections = Object.values(PROPERTY_MAP_LAYOUTS).flatMap((layout) => layout.sections);
+      return sections.some((section) => section.area === normalizedArea && section.zone === normalizedZone);
+    }
+
+    function getAreaZoneValidationMessage(area, zone) {
+      const normalizedArea = normalizePropertyArea(area);
+      const normalizedZone = normalizePropertyZone(zone);
+      const allowedZones = getYardZoneValuesForArea(normalizedArea);
+
+      if (!allowedZones.length) {
+        return "Area must be Transportation Bay, Showroom, or Yard.";
+      }
+
+      if (!allowedZones.includes(normalizedZone)) {
+        return `${normalizedArea} zone must be one of: ${allowedZones.join(", ")}.`;
+      }
+
+      return "";
+    }
+
+    function isValidPropertyLocation(area, zone, column, slot) {
+      return Boolean(getLocationRule(area, zone, column, slot));
     }
 
     function isValidShowroomBay(zone, column, slot) {
-      const normalizedZone = normalizeShowroomZone(zone);
-      const normalizedColumn = normalizeShowroomColumn(column);
-      const normalizedSlot = Number(normalizeShowroomSlot(slot));
-      const layout = SHOWROOM_SECTION_LAYOUT.find((section) => section.zone === normalizedZone);
+      return isValidPropertyLocation("Showroom", zone, column, slot);
+    }
 
-      if (!layout || !layout.columns.includes(normalizedColumn) || !Number.isInteger(normalizedSlot)) {
-        return false;
+    function getPropertyLocationValidationMessage(area, zone, rowPosition, slotPosition) {
+      const normalizedArea = normalizePropertyArea(area);
+      const normalizedZone = normalizePropertyZone(zone);
+      const areaZoneValidationMessage = getAreaZoneValidationMessage(normalizedArea, normalizedZone);
+
+      if (areaZoneValidationMessage) {
+        return areaZoneValidationMessage;
       }
 
-      if (normalizedColumn === "A") {
-        return normalizedSlot >= 7 && normalizedSlot <= 19;
+      if (!isMappedLocationAreaZone(normalizedArea, normalizedZone)) {
+        return "";
       }
 
-      return normalizedSlot >= 1 && normalizedSlot <= 19;
+      if (isValidPropertyLocation(normalizedArea, normalizedZone, rowPosition, slotPosition)) {
+        return "";
+      }
+
+      if (normalizedArea === "Transportation Bay") {
+        return "Transportation Bay locations must use Outbound A/B 1-10 or Inbound C/D 1-10.";
+      }
+
+      if (normalizedArea === "Showroom" && normalizedZone === "Sold Lane") {
+        return "Sold Lane locations must use Row Sold Lane with slots 1-7.";
+      }
+
+      if (normalizedArea === "Showroom") {
+        return "Showroom locations must use Section 1 A7-A19, Section 1 B1-B19, Section 2 C/D 1-19, Section 3 E/F 1-19, or Sold Lane 1-7.";
+      }
+
+      if (normalizedArea === "Yard") {
+        return "Outside Yard locations must use Section 1 A/B 1-13, Section 2 C/D 1-13, Section 3 E/F 1-16, Section 4 G/H 1-16, or Rental I/J 1-16.";
+      }
+
+      return "Selected map location is not valid.";
+    }
+
+    function normalizeShowroomZone(value) {
+      return normalizePropertyZone(value);
+    }
+
+    function normalizeShowroomColumn(value) {
+      return normalizePropertyColumn(value);
+    }
+
+    function normalizeShowroomSlot(value) {
+      return normalizePropertySlot(value);
     }
 
     const YARD_FORM_FIELDS = [
@@ -5979,6 +6471,13 @@
       { id: "yardMakeInput", column: "Make" },
       { id: "yardModelInput", column: "Model" },
       { id: "yardYearInput", column: "Year" },
+      { id: "yardHoursInput", column: "Hours" },
+      { id: "yardCapacityInput", column: "Capacity" },
+      { id: "yardTireTypeInput", column: "Tire Type" },
+      { id: "yardFuelTypeInput", column: "Fuel Type" },
+      { id: "yardMastRaisedInput", column: "Mast Raised" },
+      { id: "yardMastLoweredInput", column: "Mast Lowered" },
+      { id: "yardAttachmentInput", column: "Attachment" },
       { id: "yardAreaInput", column: "Area" },
       { id: "yardZoneInput", column: "Zone" },
       { id: "yardRowInput", column: "Row" },
@@ -5999,11 +6498,17 @@
       "Make",
       "Model",
       "Year",
+      "Hours",
+      "Capacity",
+      "Tire Type",
+      "Fuel Type",
+      "Mast Raised",
+      "Mast Lowered",
+      "Attachment",
       "Area",
       "Zone",
       "Row",
       "Slot",
-      "Display Position",
       "Availability Status",
       "Condition Status",
       "Customer Hold",
@@ -6093,11 +6598,9 @@
         }
 
         if (field.column === "Area") {
-          input.value = "Yard";
+          input.value = "Transportation Bay";
         } else if (field.column === "Zone") {
-          input.value = "North Yard";
-        } else if (field.column === "Display Position") {
-          input.value = "Front Row";
+          input.value = "Outbound";
         } else if (field.column === "Availability Status") {
           input.value = "Available";
         } else if (field.column === "Condition Status") {
@@ -6115,8 +6618,9 @@
     async function addYardInventoryRow() {
       const row = getYardFormRow();
 
-      if (String(row.Area || "").trim() === "Showroom" && !isValidShowroomBay(row.Zone, row.Row, row.Slot)) {
-        setYardInventoryMessage("Showroom locations must use Section 5 A7-A19, Section 5 B1-B19, Section 6 C/D 1-19, or Section 7 E/F 1-19.", "error");
+      const yardMapValidationMessage = getPropertyLocationValidationMessage(row.Area, row.Zone, row.Row, row.Slot);
+      if (yardMapValidationMessage) {
+        setYardInventoryMessage(yardMapValidationMessage, "error");
         return;
       }
 
@@ -6227,29 +6731,42 @@
       });
     }
 
+    function hasAssignedUnit(row) {
+      return String(row?.["Unit Number"] || "").trim() !== "";
+    }
+
+    function isMappedUnitRow(row) {
+      return hasAssignedUnit(row) && isValidPropertyLocation(row.Area, row.Zone, row.Row, row.Slot);
+    }
+
     function updateYardInventorySummary(filteredRows) {
       const rows = Array.isArray(yardInventoryRows) ? yardInventoryRows : [];
-      const inYardCount = rows.filter((row) => String(row.Area || "") === "Yard").length;
-      const showroomCount = rows.filter((row) => String(row.Area || "") === "Showroom").length;
-      const rentalReadyCount = rows.filter((row) => String(row.Area || "") === "Rental Ready" || String(row["Availability Status"] || "") === "Rental Ready").length;
-      const needsAttentionCount = rows.filter((row) => {
-        const area = String(row.Area || "").trim();
-        const condition = String(row["Condition Status"] || "").trim();
-        const availability = String(row["Availability Status"] || "").trim();
-        return !area || area === "Unknown" || condition !== "Ready" || ["On Hold", "In Service", "Unavailable", "Unknown"].includes(availability);
+      const mappedRows = rows.filter(isMappedUnitRow);
+      const transportationCount = mappedRows.filter((row) => normalizePropertyArea(row.Area) === "Transportation Bay").length;
+      const showroomCount = mappedRows.filter((row) => normalizePropertyArea(row.Area) === "Showroom").length;
+      const outsideYardCount = mappedRows.filter((row) => normalizePropertyArea(row.Area) === "Yard").length;
+      const rentalsCount = mappedRows.filter((row) => {
+        return normalizePropertyArea(row.Area) === "Yard" &&
+          normalizePropertyZone(row.Zone) === "Rental" &&
+          ["I", "J"].includes(normalizePropertyColumn(row.Row));
+      }).length;
+      const inServiceCount = rows.filter((row) => {
+        return hasAssignedUnit(row) && String(row["Availability Status"] || "").trim().toLowerCase() === "in service";
       }).length;
 
       const totalEl = document.getElementById("yardTotalCount");
-      const inYardEl = document.getElementById("yardInYardCount");
+      const transportationEl = document.getElementById("yardTransportationCount");
       const showroomEl = document.getElementById("yardShowroomCount");
-      const rentalReadyEl = document.getElementById("yardRentalReadyCount");
-      const needsAttentionEl = document.getElementById("yardNeedsAttentionCount");
+      const outsideEl = document.getElementById("yardOutsideCount");
+      const rentalsEl = document.getElementById("yardRentalsCount");
+      const inServiceEl = document.getElementById("yardInServiceCount");
 
-      if (totalEl) totalEl.textContent = String(rows.length);
-      if (inYardEl) inYardEl.textContent = String(inYardCount);
+      if (totalEl) totalEl.textContent = String(mappedRows.length);
+      if (transportationEl) transportationEl.textContent = String(transportationCount);
       if (showroomEl) showroomEl.textContent = String(showroomCount);
-      if (rentalReadyEl) rentalReadyEl.textContent = String(rentalReadyCount);
-      if (needsAttentionEl) needsAttentionEl.textContent = String(needsAttentionCount);
+      if (outsideEl) outsideEl.textContent = String(outsideYardCount);
+      if (rentalsEl) rentalsEl.textContent = String(rentalsCount);
+      if (inServiceEl) inServiceEl.textContent = String(inServiceCount);
     }
 
     function updateYardInventoryActionButtons() {
@@ -6421,6 +6938,10 @@
         return "sold-hold";
       }
 
+      if (availability === "In Service") {
+        return "needs-attention";
+      }
+
       if (availability === "Rental Ready") {
         return "rental-ready";
       }
@@ -6432,87 +6953,205 @@
       return "occupied";
     }
 
-    function getShowroomBayMap() {
-      const bayMap = new Map();
+    function getPropertyLocationMap() {
+      const locationMap = new Map();
 
       yardInventoryRows.forEach((row) => {
-        if (!isYardRowShowroom(row)) {
+        const area = normalizePropertyArea(row.Area);
+        const zone = normalizePropertyZone(row.Zone);
+        const column = normalizePropertyColumn(row.Row);
+        const slot = normalizePropertySlot(row.Slot);
+
+        if (!isValidPropertyLocation(area, zone, column, slot)) {
           return;
         }
 
-        const zone = normalizeShowroomZone(row.Zone);
-        const column = normalizeShowroomColumn(row.Row);
-        const slot = normalizeShowroomSlot(row.Slot);
-
-        if (!isValidShowroomBay(zone, column, slot)) {
-          return;
-        }
-
-        const key = getShowroomBayKey(zone, column, slot);
-        const currentRows = bayMap.get(key) || [];
+        const key = getPropertyLocationKey(area, zone, column, slot);
+        const currentRows = locationMap.get(key) || [];
         currentRows.push(row);
-        bayMap.set(key, currentRows);
+        locationMap.set(key, currentRows);
       });
 
-      return bayMap;
+      return locationMap;
+    }
+
+    function getShowroomBayMap() {
+      return getPropertyLocationMap();
+    }
+
+    function renderPropertySection(section, locationMap, compact = false) {
+      if (section.horizontal) {
+        const slotsHtml = [];
+
+        for (let slot = section.minSlot; slot <= section.maxSlot; slot += 1) {
+          const key = getPropertyLocationKey(section.area, section.zone, section.columns[0], slot);
+          const rowsInBay = locationMap.get(key) || [];
+          const firstRow = rowsInBay[0];
+          const unitNumber = firstRow ? String(firstRow["Unit Number"] || "").trim() : "";
+          const cellClass = firstRow ? getShowroomBayStatusClass(firstRow) : "empty";
+          const duplicateLabel = rowsInBay.length > 1 ? ` +${rowsInBay.length - 1}` : "";
+          const cellText = unitNumber ? `${unitNumber}${duplicateLabel}` : String(slot);
+          const titleText = unitNumber
+            ? `${section.zone} / ${slot}: ${unitNumber}`
+            : `${section.zone} / ${slot}: Empty`;
+
+          slotsHtml.push(`<button class="showroom-bay-cell ${cellClass}" type="button" title="${escapeHtml(titleText)}" onclick="openPropertyLocationModal('${section.area}', '${section.zone}', '${section.columns[0]}', '${slot}')">${escapeHtml(cellText)}</button>`);
+        }
+
+        return `
+          <article class="showroom-section sales-section">
+            <div class="showroom-section-title sales-title">${escapeHtml(section.zone)}</div>
+            <div class="sales-row-wrap">${slotsHtml.join("")}</div>
+          </article>
+        `;
+      }
+
+      const slotCount = section.maxSlot - section.minSlot + 1;
+      const sectionClass = section.style === "transportation" ? "transportation-section" : section.style === "yard" ? "yard-section" : "";
+      const titleClass = section.style === "transportation" ? "transportation-title" : section.style === "yard" ? "yard-title" : "";
+
+      const columnsHtml = section.columns.map((column) => {
+        const cellsHtml = getSectionSlotsDesc(section).map((slot) => {
+          if (section.openSpaces?.[column]?.includes(slot)) {
+            return `<div class="showroom-bay-cell open-space" title="Column ${column} starts at bay 7 because this entrance-side space is reserved for larger units."></div>`;
+          }
+
+          const key = getPropertyLocationKey(section.area, section.zone, column, slot);
+          const rowsInBay = locationMap.get(key) || [];
+          const firstRow = rowsInBay[0];
+          const unitNumber = firstRow ? String(firstRow["Unit Number"] || "").trim() : "";
+          const cellClass = firstRow ? getShowroomBayStatusClass(firstRow) : "empty";
+          const duplicateLabel = rowsInBay.length > 1 ? ` +${rowsInBay.length - 1}` : "";
+          const cellText = unitNumber ? `${unitNumber}${duplicateLabel}` : String(slot);
+          const titleText = unitNumber
+            ? `${section.zone} / ${column}${slot}: ${unitNumber}`
+            : `${section.zone} / ${column}${slot}: Empty`;
+
+          return `<button class="showroom-bay-cell ${cellClass}" type="button" title="${escapeHtml(titleText)}" onclick="openPropertyLocationModal('${section.area}', '${section.zone}', '${column}', '${slot}')">${escapeHtml(cellText)}</button>`;
+        }).join("");
+
+        return `<div class="showroom-bay-column" style="--slot-count: ${slotCount}; grid-template-rows: repeat(${slotCount}, ${compact ? "18px" : "32px"});">${cellsHtml}</div>`;
+      }).join("");
+
+      const labelsHtml = section.columns.map((column) => {
+        return `<div class="showroom-column-label">${escapeHtml(column)}</div>`;
+      }).join("");
+
+      return `
+        <article class="showroom-section ${sectionClass}">
+          <div class="showroom-section-title ${titleClass}">${escapeHtml(section.zone)}</div>
+          <div class="showroom-bay-columns">${columnsHtml}</div>
+          <div class="showroom-column-labels">${labelsHtml}</div>
+        </article>
+      `;
+    }
+
+    function renderSinglePropertyMapView(viewKey, compact = false) {
+      const layout = PROPERTY_MAP_LAYOUTS[viewKey] || PROPERTY_MAP_LAYOUTS.showroom;
+      const locationMap = getPropertyLocationMap();
+      const compactClass = compact ? " compact" : "";
+
+      return `
+        <div class="property-map-grid ${layout.gridClass}${compactClass}">
+          ${layout.sections.map((section) => renderPropertySection(section, locationMap, compact)).join("")}
+        </div>
+      `;
+    }
+
+    function renderFullPropertyMapView() {
+      return `
+        <div class="property-full-map-grid">
+          <div class="property-map-cluster">
+            <div class="property-map-cluster-title">Transportation Bay</div>
+            ${renderSinglePropertyMapView("transportation", false)}
+          </div>
+          <div class="property-map-cluster">
+            <div class="property-map-cluster-title">Showroom</div>
+            ${renderSinglePropertyMapView("showroom", false)}
+          </div>
+          <div class="property-map-cluster wide">
+            <div class="property-map-cluster-title">Outside Yard</div>
+            ${renderSinglePropertyMapView("yard", false)}
+          </div>
+        </div>
+      `;
     }
 
     function renderShowroomMap() {
       const grid = document.getElementById("showroomMapGrid");
       const summary = document.getElementById("showroomMapSummary");
+      const stage = document.getElementById("showroomMapStage");
+      const selectedView = getPropertyMapView();
+      const locationMap = getPropertyLocationMap();
 
       if (!grid) {
         return;
       }
 
-      const bayMap = getShowroomBayMap();
-      let occupiedBayCount = 0;
+      if (stage) {
+        stage.className = "showroom-map-stage";
+        if (selectedView === "full") {
+          stage.classList.add("full-property-stage");
+        } else {
+          stage.classList.add(PROPERTY_MAP_LAYOUTS[selectedView]?.stageClass || "showroom-stage");
+        }
+      }
 
-      grid.innerHTML = SHOWROOM_SECTION_LAYOUT.map((section) => {
-        const columnsHtml = section.columns.map((column) => {
-          const cellsHtml = SHOWROOM_SLOTS_DESC.map((slot) => {
-            if (column === "A" && slot < 7) {
-              return `<div class="showroom-bay-cell open-space" title="Column A starts at bay 7 because this entrance-side space is reserved for larger units."></div>`;
-            }
-
-            const key = getShowroomBayKey(section.zone, column, slot);
-            const rowsInBay = bayMap.get(key) || [];
-            const firstRow = rowsInBay[0];
-            const unitNumber = firstRow ? String(firstRow["Unit Number"] || "").trim() : "";
-            const cellClass = firstRow ? getShowroomBayStatusClass(firstRow) : "empty";
-            const duplicateLabel = rowsInBay.length > 1 ? ` +${rowsInBay.length - 1}` : "";
-            const cellText = unitNumber ? `${unitNumber}${duplicateLabel}` : String(slot);
-            const titleText = unitNumber
-              ? `${section.zone} / ${column}${slot}: ${unitNumber}`
-              : `${section.zone} / ${column}${slot}: Empty`;
-
-            if (unitNumber) {
-              occupiedBayCount += 1;
-            }
-
-            return `<button class="showroom-bay-cell ${cellClass}" type="button" title="${escapeHtml(titleText)}" onclick="openShowroomBayModal('${section.zone}', '${column}', '${slot}')">${escapeHtml(cellText)}</button>`;
-          }).join("");
-
-          return `<div class="showroom-bay-column">${cellsHtml}</div>`;
-        }).join("");
-
-        const labelsHtml = section.columns.map((column) => {
-          return `<div class="showroom-column-label">${column}</div>`;
-        }).join("");
-
-        return `
-          <article class="showroom-section">
-            <div class="showroom-section-title">${section.zone}</div>
-            <div class="showroom-bay-columns">${columnsHtml}</div>
-            <div class="showroom-column-labels">${labelsHtml}</div>
-          </article>
-        `;
-      }).join("");
+      if (selectedView === "full") {
+        grid.className = "";
+        grid.innerHTML = renderFullPropertyMapView();
+      } else {
+        const layout = PROPERTY_MAP_LAYOUTS[selectedView] || PROPERTY_MAP_LAYOUTS.showroom;
+        grid.className = `property-map-grid ${layout.gridClass}`;
+        grid.innerHTML = layout.sections.map((section) => renderPropertySection(section, locationMap, false)).join("");
+      }
 
       if (summary) {
-        const showroomRows = yardInventoryRows.filter(isYardRowShowroom).length;
-        summary.textContent = `${occupiedBayCount} occupied showroom bay(s). ${showroomRows} showroom unit row(s) loaded. Column A starts at bay 7; B-F support bays 1-19.`;
+        let validMappedRows = 0;
+        yardInventoryRows.forEach((row) => {
+          if (isValidPropertyLocation(row.Area, row.Zone, row.Row, row.Slot)) {
+            validMappedRows += 1;
+          }
+        });
+        const occupiedLocationCount = locationMap.size;
+        const viewLabel = PROPERTY_MAP_VIEW_LABELS[selectedView] || "Property Map";
+        summary.textContent = `${viewLabel}: ${occupiedLocationCount} occupied mapped location(s). ${validMappedRows} mapped unit row(s) loaded. Empty locations can be clicked to add a unit directly to that bay.`;
       }
+    }
+
+    function getLocationDistanceText(area, zone, slot) {
+      const normalizedArea = normalizePropertyArea(area);
+      const normalizedZone = normalizePropertyZone(zone);
+      const numericSlot = Number(normalizePropertySlot(slot));
+      const matchingRule = getLocationRule(normalizedArea, normalizedZone, "A", numericSlot)
+        || getLocationRule(normalizedArea, normalizedZone, "B", numericSlot)
+        || getLocationRule(normalizedArea, normalizedZone, "C", numericSlot)
+        || getLocationRule(normalizedArea, normalizedZone, "D", numericSlot)
+        || getLocationRule(normalizedArea, normalizedZone, "E", numericSlot)
+        || getLocationRule(normalizedArea, normalizedZone, "F", numericSlot)
+        || getLocationRule(normalizedArea, normalizedZone, "G", numericSlot)
+        || getLocationRule(normalizedArea, normalizedZone, "H", numericSlot)
+        || getLocationRule(normalizedArea, normalizedZone, "I", numericSlot)
+        || getLocationRule(normalizedArea, normalizedZone, "J", numericSlot)
+        || getLocationRule(normalizedArea, normalizedZone, "Sold Lane", numericSlot);
+
+      if (!matchingRule || !Number.isFinite(numericSlot)) {
+        return "Mapped location";
+      }
+
+      if (matchingRule.horizontal) {
+        return "Sold Lane location";
+      }
+
+      if (numericSlot === matchingRule.maxSlot) {
+        return "Furthest from entrance / front of area";
+      }
+
+      if (numericSlot === matchingRule.minSlot) {
+        return "Closest to entrance / front of area";
+      }
+
+      return "Mid-area location";
     }
 
     function closeShowroomBayModal() {
@@ -6526,7 +7165,19 @@
       modal.setAttribute("aria-hidden", "true");
     }
 
-    function openShowroomBayModal(zone, column, slot) {
+
+    function formatPropertyLocationLabel(area, zone, column, slot) {
+      return [
+        normalizePropertyArea(area),
+        normalizePropertyZone(zone),
+        normalizePropertyColumn(column),
+        normalizePropertySlot(slot),
+      ]
+        .filter((part) => String(part || "").trim() !== "")
+        .join(" / ");
+    }
+
+    function openPropertyLocationModal(area, zone, column, slot) {
       const modal = document.getElementById("showroomBayModal");
       const icon = document.getElementById("showroomBayModalIcon");
       const title = document.getElementById("showroomBayModalTitle");
@@ -6538,14 +7189,14 @@
         return;
       }
 
-      const key = getShowroomBayKey(zone, column, slot);
-      const rowsInBay = getShowroomBayMap().get(key) || [];
+      const normalizedArea = normalizePropertyArea(area);
+      const normalizedZone = normalizePropertyZone(zone);
+      const normalizedColumn = normalizePropertyColumn(column);
+      const normalizedSlot = normalizePropertySlot(slot);
+      const key = getPropertyLocationKey(normalizedArea, normalizedZone, normalizedColumn, normalizedSlot);
+      const rowsInBay = getPropertyLocationMap().get(key) || [];
       const row = rowsInBay[0] || null;
-      const distanceText = Number(slot) === 19
-        ? "Furthest from entrance"
-        : Number(slot) === 1
-          ? "Closest to entrance"
-          : "Mid-showroom";
+      const locationLabel = formatPropertyLocationLabel(normalizedArea, normalizedZone, normalizedColumn, normalizedSlot);
 
       if (icon) {
         icon.className = "modal-icon";
@@ -6553,10 +7204,10 @@
         icon.textContent = row ? "✓" : "□";
       }
 
-      title.textContent = `${zone} / ${column}${slot}`;
+      title.textContent = locationLabel;
       description.textContent = row
         ? `Occupied by ${row["Unit Number"] || "selected unit"}.`
-        : "This showroom bay is currently empty.";
+        : "This mapped location is currently empty.";
 
       details.innerHTML = row
         ? `
@@ -6564,13 +7215,12 @@
           <div class="showroom-detail-row"><span>Equipment</span><strong>${escapeHtml([row.Make, row.Model].filter(Boolean).join(" ") || row["Equipment Type"] || "")}</strong></div>
           <div class="showroom-detail-row"><span>Availability</span><strong>${escapeHtml(row["Availability Status"] || "")}</strong></div>
           <div class="showroom-detail-row"><span>Condition</span><strong>${escapeHtml(row["Condition Status"] || "")}</strong></div>
-          <div class="showroom-detail-row"><span>Distance</span><strong>${distanceText}</strong></div>
+          <div class="showroom-detail-row"><span>Location</span><strong>${escapeHtml(locationLabel)}</strong></div>
           <div class="showroom-detail-row"><span>Notes</span><strong>${escapeHtml(row.Notes || "")}</strong></div>
         `
         : `
-          <div class="showroom-detail-row"><span>Location</span><strong>${zone} / ${column}${slot}</strong></div>
+          <div class="showroom-detail-row"><span>Location</span><strong>${escapeHtml(locationLabel)}</strong></div>
           <div class="showroom-detail-row"><span>Status</span><strong>Empty</strong></div>
-          <div class="showroom-detail-row"><span>Distance</span><strong>${distanceText}</strong></div>
         `;
 
       actions.innerHTML = "";
@@ -6595,7 +7245,7 @@
         addButton.onclick = (event) => {
           event.preventDefault();
           event.stopPropagation();
-          openAddYardPlacementModalFromShowroomBay(zone, column, slot);
+          openAddYardPlacementModalFromPropertyLocation(normalizedArea, normalizedZone, normalizedColumn, normalizedSlot);
         };
         actions.appendChild(addButton);
       }
@@ -6608,6 +7258,10 @@
 
       modal.classList.add("open");
       modal.setAttribute("aria-hidden", "false");
+    }
+
+    function openShowroomBayModal(zone, column, slot) {
+      openPropertyLocationModal("Showroom", zone, column, slot);
     }
 
     function closeYardEditModal() {
@@ -6650,7 +7304,7 @@
       return select;
     }
 
-    function createYardEditInput(column, value, index) {
+    function createYardEditInput(column, value, index, rowValues = {}) {
       const wrapper = document.createElement("div");
       wrapper.className = column === "Notes" ? "excel-field field-wide" : "excel-field";
 
@@ -6661,12 +7315,12 @@
 
       let input;
 
-      if (column === "Area") {
-        input = createSelectInput(YARD_AREA_VALUES, value);
+      if (column === "Equipment Type") {
+        input = createSelectInput(YARD_EQUIPMENT_TYPE_VALUES, value || YARD_EQUIPMENT_TYPE_VALUES[0]);
+      } else if (column === "Area") {
+        input = createSelectInput(YARD_AREA_VALUES, normalizePropertyArea(value || rowValues.Area || "Yard"));
       } else if (column === "Zone") {
-        input = createSelectInput(YARD_ZONE_VALUES, value);
-      } else if (column === "Display Position") {
-        input = createSelectInput(YARD_DISPLAY_VALUES, value);
+        input = createSelectInput(getYardZoneValuesForArea(rowValues.Area), normalizePropertyZone(value || rowValues.Zone));
       } else if (column === "Availability Status") {
         input = createSelectInput(YARD_AVAILABILITY_VALUES, value);
       } else if (column === "Condition Status") {
@@ -6675,12 +7329,17 @@
         input = createSelectInput(YARD_CUSTOMER_HOLD_VALUES, value);
       } else {
         input = document.createElement("input");
-        input.type = column === "Year" ? "number" : "text";
+        input.type = ["Year", "Hours"].includes(column) ? "number" : "text";
 
         if (column === "Year") {
           input.min = "1900";
           input.max = "2100";
           input.step = "1";
+        }
+
+        if (column === "Hours") {
+          input.min = "0";
+          input.step = "0.1";
         }
 
         if (column === "Last Moved Date") {
@@ -6698,7 +7357,7 @@
       return wrapper;
     }
 
-    function createYardAddInput(column, value, index) {
+    function createYardAddInput(column, value, index, rowValues = {}) {
       const wrapper = document.createElement("div");
       wrapper.className = column === "Notes" ? "excel-field field-wide" : "excel-field";
 
@@ -6709,12 +7368,12 @@
 
       let input;
 
-      if (column === "Area") {
-        input = createSelectInput(YARD_AREA_VALUES, value);
+      if (column === "Equipment Type") {
+        input = createSelectInput(YARD_EQUIPMENT_TYPE_VALUES, value || YARD_EQUIPMENT_TYPE_VALUES[0]);
+      } else if (column === "Area") {
+        input = createSelectInput(YARD_AREA_VALUES, normalizePropertyArea(value || rowValues.Area || "Yard"));
       } else if (column === "Zone") {
-        input = createSelectInput(YARD_ZONE_VALUES, value);
-      } else if (column === "Display Position") {
-        input = createSelectInput(YARD_DISPLAY_VALUES, value);
+        input = createSelectInput(getYardZoneValuesForArea(rowValues.Area), normalizePropertyZone(value || rowValues.Zone));
       } else if (column === "Availability Status") {
         input = createSelectInput(YARD_AVAILABILITY_VALUES, value);
       } else if (column === "Condition Status") {
@@ -6723,12 +7382,17 @@
         input = createSelectInput(YARD_CUSTOMER_HOLD_VALUES, value);
       } else {
         input = document.createElement("input");
-        input.type = column === "Year" ? "number" : "text";
+        input.type = ["Year", "Hours"].includes(column) ? "number" : "text";
 
         if (column === "Year") {
           input.min = "1900";
           input.max = "2100";
           input.step = "1";
+        }
+
+        if (column === "Hours") {
+          input.min = "0";
+          input.step = "0.1";
         }
 
         if (column === "Last Moved Date") {
@@ -6740,8 +7404,8 @@
       input.dataset.yardAddColumn = column;
       input.value = value ?? "";
 
-      if (String(currentYardAddDefaults.Area || "") === "Showroom" && ["Area", "Zone", "Row", "Slot"].includes(column)) {
-        input.title = "This location was selected from the showroom map.";
+      if (currentYardAddDefaults.__fromMap && ["Area", "Zone", "Row", "Slot"].includes(column)) {
+        input.title = "This location was selected from the property map.";
 
         if (input.tagName === "SELECT") {
           input.disabled = true;
@@ -6762,15 +7426,21 @@
       return {
         "Unit Number": "",
         "Serial Number": "",
-        "Equipment Type": "",
+        "Equipment Type": "Forklift",
         "Make": "",
         "Model": "",
         "Year": "",
+        "Hours": "",
+        "Capacity": "",
+        "Tire Type": "",
+        "Fuel Type": "",
+        "Mast Raised": "",
+        "Mast Lowered": "",
+        "Attachment": "",
         "Area": "Yard",
-        "Zone": "North Yard",
+        "Zone": "Section 1",
         "Row": "",
         "Slot": "",
-        "Display Position": "Front Row",
         "Availability Status": "Available",
         "Condition Status": "Ready",
         "Customer Hold": "No",
@@ -6793,25 +7463,23 @@
       currentYardAddDefaults = getDefaultYardAddValues(defaultValues);
       fields.innerHTML = "";
 
-      const isShowroomAdd = String(currentYardAddDefaults.Area || "") === "Showroom";
-
-      if (isShowroomAdd) {
+      if (currentYardAddDefaults.__fromMap) {
         const locationNote = document.createElement("div");
         locationNote.className = "excel-auto-generated-note";
         locationNote.innerHTML = `
-          Showroom location selected from map.
-          <span>${escapeHtml(currentYardAddDefaults.Zone)} / ${escapeHtml(currentYardAddDefaults.Row)}${escapeHtml(currentYardAddDefaults.Slot)} is prefilled below and will be saved with the new unit.</span>
+          Map location selected.
+          <span>${escapeHtml(formatPropertyLocationLabel(currentYardAddDefaults.Area, currentYardAddDefaults.Zone, currentYardAddDefaults.Row, currentYardAddDefaults.Slot))} is prefilled below and will be saved with the new unit.</span>
         `;
         fields.appendChild(locationNote);
       }
 
       YARD_EDITABLE_COLUMNS.forEach((column, index) => {
-        fields.appendChild(createYardAddInput(column, currentYardAddDefaults[column], index));
+        fields.appendChild(createYardAddInput(column, currentYardAddDefaults[column], index, currentYardAddDefaults));
       });
 
-      const locationLabel = [currentYardAddDefaults.Zone, currentYardAddDefaults.Row && `${currentYardAddDefaults.Row}${currentYardAddDefaults.Slot}`]
-        .filter(Boolean)
-        .join(" / ");
+      setupAreaZoneDependency("#yardAddFields", "data-yard-add-column", "data-yard-add-column", currentYardAddDefaults.Zone);
+
+      const locationLabel = formatPropertyLocationLabel(currentYardAddDefaults.Area, currentYardAddDefaults.Zone, currentYardAddDefaults.Row, currentYardAddDefaults.Slot);
 
       setYardAddMessage(
         locationLabel
@@ -6847,7 +7515,7 @@
       }
     }
 
-    function createShowroomInlineAddInput(column, value, index) {
+    function createShowroomInlineAddInput(column, value, index, rowValues = {}) {
       const wrapper = document.createElement("div");
       wrapper.className = column === "Notes" ? "excel-field field-wide" : "excel-field";
 
@@ -6858,12 +7526,12 @@
 
       let input;
 
-      if (column === "Area") {
-        input = createSelectInput(YARD_AREA_VALUES, value);
+      if (column === "Equipment Type") {
+        input = createSelectInput(YARD_EQUIPMENT_TYPE_VALUES, value || YARD_EQUIPMENT_TYPE_VALUES[0]);
+      } else if (column === "Area") {
+        input = createSelectInput(YARD_AREA_VALUES, normalizePropertyArea(value || rowValues.Area || "Showroom"));
       } else if (column === "Zone") {
-        input = createSelectInput(YARD_ZONE_VALUES, value);
-      } else if (column === "Display Position") {
-        input = createSelectInput(YARD_DISPLAY_VALUES, value);
+        input = createSelectInput(getYardZoneValuesForArea(rowValues.Area), normalizePropertyZone(value || rowValues.Zone));
       } else if (column === "Availability Status") {
         input = createSelectInput(YARD_AVAILABILITY_VALUES, value);
       } else if (column === "Condition Status") {
@@ -6872,12 +7540,17 @@
         input = createSelectInput(YARD_CUSTOMER_HOLD_VALUES, value);
       } else {
         input = document.createElement("input");
-        input.type = column === "Year" ? "number" : "text";
+        input.type = ["Year", "Hours"].includes(column) ? "number" : "text";
 
         if (column === "Year") {
           input.min = "1900";
           input.max = "2100";
           input.step = "1";
+        }
+
+        if (column === "Hours") {
+          input.min = "0";
+          input.step = "0.1";
         }
 
         if (column === "Last Moved Date") {
@@ -6913,7 +7586,6 @@
         "Zone": normalizeShowroomZone(zone),
         "Row": normalizeShowroomColumn(column),
         "Slot": normalizeShowroomSlot(slot),
-        "Display Position": "Indoor Display",
         "Availability Status": "Available",
         "Condition Status": "Ready",
         "Customer Hold": "No",
@@ -7035,8 +7707,9 @@
         return;
       }
 
-      if (!isValidShowroomBay(row.Zone, row.Row, row.Slot)) {
-        setShowroomInlineAddMessage("Showroom locations must use Section 5 A7-A19, Section 5 B1-B19, Section 6 C/D 1-19, or Section 7 E/F 1-19.", "error");
+      const inlineMapValidationMessage = getPropertyLocationValidationMessage(row.Area, row.Zone, row.Row, row.Slot);
+      if (inlineMapValidationMessage) {
+        setShowroomInlineAddMessage(inlineMapValidationMessage, "error");
         return;
       }
 
@@ -7063,27 +7736,32 @@
     }
 
     function openAddYardPlacementModalFromShowroomBay(zone, column, slot) {
+      openAddYardPlacementModalFromPropertyLocation("Showroom", zone, column, slot);
+    }
+
+    function openAddYardPlacementModalFromPropertyLocation(area, zone, column, slot) {
       closeShowroomBayModal();
 
       setTimeout(() => {
-        openYardAddModalForShowroomBay(zone, column, slot);
+        openYardAddModalForPropertyLocation(area, zone, column, slot);
       }, 0);
     }
 
-    function openYardAddModalForShowroomBay(zone, column, slot) {
-      const normalizedZone = normalizeShowroomZone(zone);
-      const normalizedColumn = normalizeShowroomColumn(column);
-      const normalizedSlot = normalizeShowroomSlot(slot);
+    function openYardAddModalForPropertyLocation(area, zone, column, slot) {
+      const normalizedArea = normalizePropertyArea(area);
+      const normalizedZone = normalizePropertyZone(zone);
+      const normalizedColumn = normalizePropertyColumn(column);
+      const normalizedSlot = normalizePropertySlot(slot);
 
       openYardAddModal({
-        "Area": "Showroom",
+        "Area": normalizedArea,
         "Zone": normalizedZone,
         "Row": normalizedColumn,
         "Slot": normalizedSlot,
-        "Display Position": "Indoor Display",
         "Availability Status": "Available",
         "Condition Status": "Ready",
         "Customer Hold": "No",
+        "__fromMap": true,
       });
     }
 
@@ -7107,8 +7785,9 @@
         row[input.dataset.yardAddColumn] = input.value;
       });
 
-      if (String(row.Area || "").trim() === "Showroom" && !isValidShowroomBay(row.Zone, row.Row, row.Slot)) {
-        setYardAddMessage("Showroom locations must use Section 5 A7-A19, Section 5 B1-B19, Section 6 C/D 1-19, or Section 7 E/F 1-19.", "error");
+      const yardAddMapValidationMessage = getPropertyLocationValidationMessage(row.Area, row.Zone, row.Row, row.Slot);
+      if (yardAddMapValidationMessage) {
+        setYardAddMessage(yardAddMapValidationMessage, "error");
         return;
       }
 
@@ -7148,8 +7827,10 @@
       fields.innerHTML = "";
 
       YARD_EDITABLE_COLUMNS.forEach((column, index) => {
-        fields.appendChild(createYardEditInput(column, selectedRow[column], index));
+        fields.appendChild(createYardEditInput(column, selectedRow[column], index, selectedRow));
       });
+
+      setupAreaZoneDependency("#yardEditFields", "data-yard-column", "data-yard-column", selectedRow.Zone);
 
       setYardEditMessage(`Editing Excel row ${editingYardInventoryRowNumber}.`, "success");
       modal.classList.add("open");
@@ -7169,8 +7850,9 @@
         row[input.dataset.yardColumn] = input.value;
       });
 
-      if (String(row.Area || "").trim() === "Showroom" && !isValidShowroomBay(row.Zone, row.Row, row.Slot)) {
-        setYardEditMessage("Showroom locations must use Section 5 A7-A19, Section 5 B1-B19, Section 6 C/D 1-19, or Section 7 E/F 1-19.", "error");
+      const yardEditMapValidationMessage = getPropertyLocationValidationMessage(row.Area, row.Zone, row.Row, row.Slot);
+      if (yardEditMapValidationMessage) {
+        setYardEditMessage(yardEditMapValidationMessage, "error");
         return;
       }
 
@@ -7373,7 +8055,7 @@
 
       const area = String(getRowValueByColumn(row, "Area") ?? "").trim();
       const zone = String(getRowValueByColumn(row, "Zone") ?? "").trim();
-      const displayPosition = String(getRowValueByColumn(row, "Display Position") ?? "").trim();
+      const equipmentType = String(getRowValueByColumn(row, "Equipment Type") ?? "").trim();
       const availability = String(getRowValueByColumn(row, "Availability Status") ?? "").trim();
       const condition = String(getRowValueByColumn(row, "Condition Status") ?? "").trim();
       const customerHold = String(getRowValueByColumn(row, "Customer Hold") ?? "").trim();
@@ -7382,12 +8064,18 @@
         issues.push("Area must match allowed values");
       }
 
-      if (zone && !hasAllowedValue(zone, YARD_ZONE_VALUES)) {
-        issues.push("Zone must match allowed values");
+      if (zone) {
+        const normalizedArea = normalizePropertyArea(area);
+        const normalizedZone = normalizePropertyZone(zone);
+        const allowedZones = getYardZoneValuesForArea(normalizedArea);
+
+        if (!allowedZones.includes(normalizedZone)) {
+          issues.push(`${normalizedArea || "Selected area"} Zone must be one of: ${allowedZones.join(", ")}`);
+        }
       }
 
-      if (displayPosition && !hasAllowedValue(displayPosition, YARD_DISPLAY_VALUES)) {
-        issues.push("Display Position must match allowed values");
+      if (equipmentType && !hasAllowedValue(equipmentType, YARD_EQUIPMENT_TYPE_VALUES)) {
+        issues.push("Equipment Type must be Forklift, Scissor Lift, Piggyback, or Order Picker");
       }
 
       if (availability && !hasAllowedValue(availability, YARD_AVAILABILITY_VALUES)) {
@@ -7402,8 +8090,9 @@
         issues.push("Customer Hold must be Yes or No");
       }
 
-      if (area.toLowerCase() === "showroom" && !isValidShowroomBay(zone, getRowValueByColumn(row, "Row"), getRowValueByColumn(row, "Slot"))) {
-        issues.push("Showroom location must be Section 5 A7-A19, Section 5 B1-B19, Section 6 C/D 1-19, or Section 7 E/F 1-19");
+      const bulkMapValidationMessage = getPropertyLocationValidationMessage(area, zone, getRowValueByColumn(row, "Row"), getRowValueByColumn(row, "Slot"));
+      if (bulkMapValidationMessage) {
+        issues.push(bulkMapValidationMessage);
       }
 
       return issues;
@@ -7418,10 +8107,6 @@
 
       if (column === "Zone" && String(value ?? "").trim() === "") {
         return "Unknown";
-      }
-
-      if (column === "Display Position" && String(value ?? "").trim() === "") {
-        return "Not Displayed";
       }
 
       if (column === "Availability Status" && String(value ?? "").trim() === "") {
@@ -7483,7 +8168,7 @@
 
                   if (issues.some((issue) => issue.toLowerCase().includes(column.toLowerCase()))) {
                     cellClass = "error-cell";
-                  } else if (["Area", "Zone", "Display Position", "Availability Status", "Condition Status", "Customer Hold"].includes(column) && !String(rawValue ?? "").trim()) {
+                  } else if (["Area", "Zone", "Availability Status", "Condition Status", "Customer Hold"].includes(column) && !String(rawValue ?? "").trim()) {
                     cellClass = "generated-cell";
                   }
 

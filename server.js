@@ -1619,7 +1619,7 @@ function readPartsInventoryWorkbook() {
     writeWorkbookToDisk(workbook, partsInventoryFile);
   }
 
-  const usableHeaders = headers.filter((header) => String(header || "").trim() !== "");
+  const usableHeaders = YARD_HEADERS.filter((header) => String(header || "").trim() !== "");
 
   return {
     filePath: partsInventoryFile,
@@ -1638,10 +1638,13 @@ function getPartsRowsAsObjects() {
   const rows = XLSX.utils.sheet_to_json(worksheet, {
     defval: "",
     blankrows: false,
-  }).map((row, index) => ({
-    __excelRowNumber: index + 2,
-    ...row,
-  }));
+  }).map((row, index) => {
+    const cleanRow = { __excelRowNumber: index + 2 };
+    YARD_HEADERS.forEach((header) => {
+      cleanRow[header] = getIncomingValueByHeader(row, header) ?? "";
+    });
+    return cleanRow;
+  });
 
   return {
     rows,
@@ -2350,11 +2353,17 @@ const YARD_HEADERS = [
   "Make",
   "Model",
   "Year",
+  "Hours",
+  "Capacity",
+  "Tire Type",
+  "Fuel Type",
+  "Mast Raised",
+  "Mast Lowered",
+  "Attachment",
   "Area",
   "Zone",
   "Row",
   "Slot",
-  "Display Position",
   "Availability Status",
   "Condition Status",
   "Customer Hold",
@@ -2365,41 +2374,19 @@ const YARD_HEADERS = [
   "Last Updated",
 ];
 const YARD_AREA_VALUES = [
-  "Yard",
+  "Transportation Bay",
   "Showroom",
-  "Shop",
-  "Rental Ready",
-  "Sold Staging",
-  "Service Hold",
-  "Wash Bay",
-  "Delivery Staging",
-  "Offsite",
-  "Unknown",
+  "Yard",
 ];
 const YARD_ZONE_VALUES = [
-  "North Yard",
-  "South Yard",
-  "East Yard",
-  "West Yard",
-  "Showroom Floor",
-  "Section 5",
-  "Section 6",
-  "Section 7",
-  "Shop Bay",
-  "Wash Bay",
-  "Delivery Lane",
-  "Rental Line",
-  "Sold Line",
-  "Offsite",
-  "Unknown",
-];
-const YARD_DISPLAY_VALUES = [
-  "Front Row",
-  "Middle Row",
-  "Back Row",
-  "Indoor Display",
-  "Outdoor Display",
-  "Not Displayed",
+  "Outbound",
+  "Inbound",
+  "Section 1",
+  "Section 2",
+  "Section 3",
+  "Section 4",
+  "Sold Lane",
+  "Rental",
 ];
 const YARD_AVAILABILITY_VALUES = [
   "Available",
@@ -2424,6 +2411,26 @@ const YARD_CONDITION_VALUES = [
   "Unknown",
 ];
 const YARD_CUSTOMER_HOLD_VALUES = ["No", "Yes"];
+const YARD_EQUIPMENT_TYPE_VALUES = [
+  "Forklift",
+  "Scissor Lift",
+  "Piggyback",
+  "Order Picker",
+];
+const YARD_ZONE_VALUES_BY_AREA = {
+  "Transportation Bay": ["Outbound", "Inbound"],
+  Showroom: ["Section 1", "Section 2", "Section 3", "Sold Lane"],
+  Yard: ["Section 1", "Section 2", "Section 3", "Section 4", "Rental"],
+};
+
+function getTodayDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getYardZoneValuesForArea(area) {
+  const normalizedArea = normalizePropertyArea(area || "Yard");
+  return YARD_ZONE_VALUES_BY_AREA[normalizedArea] || [];
+}
 
 function ensureYardInventoryWorkbook() {
   const dataDir = path.dirname(yardInventoryFile);
@@ -2495,7 +2502,7 @@ function readYardInventoryWorkbook() {
     writeWorkbookToDisk(workbook, yardInventoryFile);
   }
 
-  const usableHeaders = headers.filter((header) => String(header || "").trim() !== "");
+  const usableHeaders = YARD_HEADERS.filter((header) => String(header || "").trim() !== "");
 
   return {
     filePath: yardInventoryFile,
@@ -2514,10 +2521,13 @@ function getYardRowsAsObjects() {
   const rows = XLSX.utils.sheet_to_json(worksheet, {
     defval: "",
     blankrows: false,
-  }).map((row, index) => ({
-    __excelRowNumber: index + 2,
-    ...row,
-  }));
+  }).map((row, index) => {
+    const cleanRow = { __excelRowNumber: index + 2 };
+    YARD_HEADERS.forEach((header) => {
+      cleanRow[header] = getIncomingValueByHeader(row, header) ?? "";
+    });
+    return cleanRow;
+  });
 
   return {
     rows,
@@ -2557,53 +2567,145 @@ function normalizeYardYear(value) {
   return text;
 }
 
-function normalizeShowroomZone(value) {
+function normalizePropertyArea(value) {
   const text = String(value ?? "").trim().toLowerCase();
 
-  if (["section 5", "5", "showroom section 5"].includes(text)) return "Section 5";
-  if (["section 6", "6", "showroom section 6"].includes(text)) return "Section 6";
-  if (["section 7", "7", "showroom section 7"].includes(text)) return "Section 7";
+  if (["transportation bay", "transport", "transportation", "shipping", "receiving"].includes(text)) return "Transportation Bay";
+  if (["showroom", "show room"].includes(text)) return "Showroom";
+  if (["yard", "outside yard", "outdoor yard"].includes(text)) return "Yard";
 
   return String(value ?? "").trim();
 }
 
-function normalizeShowroomColumn(value) {
-  return String(value ?? "").trim().toUpperCase();
+function normalizePropertyZone(value) {
+  const text = String(value ?? "").trim().toLowerCase();
+
+  if (["outbound", "out bound"].includes(text)) return "Outbound";
+  if (["inbound", "in bound"].includes(text)) return "Inbound";
+  if (["section 1", "1", "section 5", "5", "section 10", "10", "showroom section 5", "yard section 10"].includes(text)) return "Section 1";
+  if (["section 2", "2", "section 6", "6", "section 14", "14", "showroom section 6", "yard section 14"].includes(text)) return "Section 2";
+  if (["section 3", "3", "section 7", "7", "section 11", "11", "showroom section 7", "yard section 11"].includes(text)) return "Section 3";
+  if (["section 4", "4", "section 12", "12", "yard section 12"].includes(text)) return "Section 4";
+  if (["sold lane", "sold", "sales", "sales row"].includes(text)) return "Sold Lane";
+  if (["rental", "rental row", "rental line"].includes(text)) return "Rental";
+
+  return String(value ?? "").trim();
 }
 
-function normalizeShowroomSlot(value) {
+function normalizePropertyColumn(value) {
+  const text = String(value ?? "").trim();
+  return ["sales", "sales row", "sold lane", "sold"].includes(text.toLowerCase()) ? "Sold Lane" : text.toUpperCase();
+}
+
+function normalizePropertySlot(value) {
   const match = String(value ?? "").trim().match(/\d+/);
   return match ? String(Number(match[0])) : "";
 }
 
+const PROPERTY_LOCATION_RULES = [
+  { area: "Transportation Bay", zone: "Outbound", columns: ["A", "B"], minSlot: 1, maxSlot: 10 },
+  { area: "Transportation Bay", zone: "Inbound", columns: ["C", "D"], minSlot: 1, maxSlot: 10 },
+  { area: "Showroom", zone: "Section 1", columns: ["A", "B"], minSlot: 1, maxSlot: 19, openSpaces: { A: [1, 2, 3, 4, 5, 6] } },
+  { area: "Showroom", zone: "Section 2", columns: ["C", "D"], minSlot: 1, maxSlot: 19 },
+  { area: "Showroom", zone: "Section 3", columns: ["E", "F"], minSlot: 1, maxSlot: 19 },
+  { area: "Showroom", zone: "Sold Lane", columns: ["Sold Lane"], minSlot: 1, maxSlot: 7 },
+  { area: "Yard", zone: "Section 1", columns: ["A", "B"], minSlot: 1, maxSlot: 13 },
+  { area: "Yard", zone: "Section 2", columns: ["C", "D"], minSlot: 1, maxSlot: 13 },
+  { area: "Yard", zone: "Section 3", columns: ["E", "F"], minSlot: 1, maxSlot: 16 },
+  { area: "Yard", zone: "Section 4", columns: ["G", "H"], minSlot: 1, maxSlot: 16 },
+  { area: "Yard", zone: "Rental", columns: ["I", "J"], minSlot: 1, maxSlot: 16 },
+];
+
+function getPropertyLocationRule(area, zone, column, slot) {
+  const normalizedArea = normalizePropertyArea(area);
+  const normalizedZone = normalizePropertyZone(zone);
+  const normalizedColumn = normalizePropertyColumn(column);
+  const normalizedSlot = Number(normalizePropertySlot(slot));
+
+  return PROPERTY_LOCATION_RULES.find((rule) => {
+    if (rule.area !== normalizedArea || rule.zone !== normalizedZone) {
+      return false;
+    }
+
+    if (!rule.columns.includes(normalizedColumn) || !Number.isInteger(normalizedSlot)) {
+      return false;
+    }
+
+    if (rule.openSpaces?.[normalizedColumn]?.includes(normalizedSlot)) {
+      return false;
+    }
+
+    return normalizedSlot >= rule.minSlot && normalizedSlot <= rule.maxSlot;
+  }) || null;
+}
+
+function isMappedLocationAreaZone(area, zone) {
+  const normalizedArea = normalizePropertyArea(area);
+  const normalizedZone = normalizePropertyZone(zone);
+  return PROPERTY_LOCATION_RULES.some((rule) => rule.area === normalizedArea && rule.zone === normalizedZone);
+}
+
+function getPropertyLocationKey(area, zone, column, slot) {
+  return `${normalizePropertyArea(area)}|${normalizePropertyZone(zone)}|${normalizePropertyColumn(column)}|${normalizePropertySlot(slot)}`;
+}
+
+function isValidPropertyLocation(area, zone, column, slot) {
+  return Boolean(getPropertyLocationRule(area, zone, column, slot));
+}
+
+function getPropertyLocationValidationMessage(area, zone, column, slot) {
+  const normalizedArea = normalizePropertyArea(area);
+  const normalizedZone = normalizePropertyZone(zone);
+
+  if (!isMappedLocationAreaZone(normalizedArea, normalizedZone)) {
+    return "";
+  }
+
+  if (isValidPropertyLocation(normalizedArea, normalizedZone, column, slot)) {
+    return "";
+  }
+
+  if (normalizedArea === "Transportation Bay") {
+    return "Transportation Bay locations must use Outbound A/B 1-10 or Inbound C/D 1-10.";
+  }
+
+  if (normalizedArea === "Showroom" && normalizedZone === "Sold Lane") {
+    return "Sold Lane locations must use Row Sold Lane with slots 1-7.";
+  }
+
+  if (normalizedArea === "Showroom") {
+    return "Showroom locations must use Section 1 A7-A19, Section 1 B1-B19, Section 2 C/D 1-19, Section 3 E/F 1-19, or Sold Lane 1-7.";
+  }
+
+  if (normalizedArea === "Yard") {
+    return "Outside Yard locations must use Section 1 A/B 1-13, Section 2 C/D 1-13, Section 3 E/F 1-16, Section 4 G/H 1-16, or Rental I/J 1-16.";
+  }
+
+  return "Selected map location is not valid.";
+}
+
+function normalizeShowroomZone(value) {
+  return normalizePropertyZone(value);
+}
+
+function normalizeShowroomColumn(value) {
+  return normalizePropertyColumn(value);
+}
+
+function normalizeShowroomSlot(value) {
+  return normalizePropertySlot(value);
+}
+
 function getShowroomBayKey(zone, column, slot) {
-  return `${normalizeShowroomZone(zone)}|${normalizeShowroomColumn(column)}|${normalizeShowroomSlot(slot)}`;
+  return getPropertyLocationKey("Showroom", zone, column, slot);
 }
 
 function isValidShowroomBay(zone, column, slot) {
-  const normalizedZone = normalizeShowroomZone(zone);
-  const normalizedColumn = normalizeShowroomColumn(column);
-  const normalizedSlot = Number(normalizeShowroomSlot(slot));
-  const validColumnsByZone = {
-    "Section 5": ["A", "B"],
-    "Section 6": ["C", "D"],
-    "Section 7": ["E", "F"],
-  };
-  const validColumns = validColumnsByZone[normalizedZone];
-
-  if (!validColumns || !validColumns.includes(normalizedColumn) || !Number.isInteger(normalizedSlot)) {
-    return false;
-  }
-
-  if (normalizedColumn === "A") {
-    return normalizedSlot >= 7 && normalizedSlot <= 19;
-  }
-
-  return normalizedSlot >= 1 && normalizedSlot <= 19;
+  return isValidPropertyLocation("Showroom", zone, column, slot);
 }
 
 function getShowroomBayValidationMessage() {
-  return "Showroom locations must use Section 5 A7-A19, Section 5 B1-B19, Section 6 C/D 1-19, or Section 7 E/F 1-19.";
+  return "Showroom locations must use Section 1 A7-A19, Section 1 B1-B19, Section 2 C/D 1-19, Section 3 E/F 1-19, or Sold Lane 1-7.";
 }
 
 function getYardReservedValues(headers, rowsAsArrays, skipExcelRowNumber = null) {
@@ -2614,6 +2716,7 @@ function getYardReservedValues(headers, rowsAsArrays, skipExcelRowNumber = null)
   const slotIndex = getHeaderIndex(headers, "Slot");
   const unitNumbers = new Set();
   const showroomBays = new Map();
+  const propertyLocations = new Map();
 
   rowsAsArrays.slice(1).forEach((rowArray, index) => {
     const excelRowNumber = index + 2;
@@ -2632,15 +2735,18 @@ function getYardReservedValues(headers, rowsAsArrays, skipExcelRowNumber = null)
       }
     }
 
-    const area = areaIndex >= 0 ? String(rowArray[areaIndex] ?? "").trim() : "";
+    const area = areaIndex >= 0 ? rowArray[areaIndex] : "";
+    const zone = zoneIndex >= 0 ? rowArray[zoneIndex] : "";
+    const column = rowIndex >= 0 ? rowArray[rowIndex] : "";
+    const slot = slotIndex >= 0 ? rowArray[slotIndex] : "";
 
-    if (area.toLowerCase() === "showroom") {
-      const zone = zoneIndex >= 0 ? rowArray[zoneIndex] : "";
-      const column = rowIndex >= 0 ? rowArray[rowIndex] : "";
-      const slot = slotIndex >= 0 ? rowArray[slotIndex] : "";
+    if (isValidPropertyLocation(area, zone, column, slot)) {
+      const occupyingLabel = cleanUnitNumber || `Excel row ${excelRowNumber}`;
+      const propertyKey = getPropertyLocationKey(area, zone, column, slot);
+      propertyLocations.set(propertyKey, occupyingLabel);
 
-      if (isValidShowroomBay(zone, column, slot)) {
-        showroomBays.set(getShowroomBayKey(zone, column, slot), cleanUnitNumber || `Excel row ${excelRowNumber}`);
+      if (normalizePropertyArea(area) === "Showroom") {
+        showroomBays.set(getShowroomBayKey(zone, column, slot), occupyingLabel);
       }
     }
   });
@@ -2648,6 +2754,7 @@ function getYardReservedValues(headers, rowsAsArrays, skipExcelRowNumber = null)
   return {
     unitNumbers,
     showroomBays,
+    propertyLocations,
   };
 }
 
@@ -2708,8 +2815,8 @@ function buildYardRowFromRequest(headers, incomingRow, options = {}) {
     throw new Error(`Unit Number ${unitNumber} already exists in Yard Inventory.`);
   }
 
-  const area = normalizeYardChoice(
-    getIncomingValueByHeader(rowData, "Area"),
+  let area = normalizeYardChoice(
+    normalizePropertyArea(getIncomingValueByHeader(rowData, "Area")),
     YARD_AREA_VALUES,
     "Area",
     "Yard"
@@ -2739,50 +2846,81 @@ function buildYardRowFromRequest(headers, incomingRow, options = {}) {
     throw new Error("Condition Status is required.");
   }
 
+  const allowedZonesForArea = getYardZoneValuesForArea(area);
   let zone = normalizeYardChoice(
-    getIncomingValueByHeader(rowData, "Zone"),
-    YARD_ZONE_VALUES,
+    normalizePropertyZone(getIncomingValueByHeader(rowData, "Zone")),
+    allowedZonesForArea,
     "Zone",
-    "Unknown"
+    allowedZonesForArea[0] || ""
   );
   let rowPosition = String(getIncomingValueByHeader(rowData, "Row") ?? "").trim().toUpperCase();
   let slotPosition = String(getIncomingValueByHeader(rowData, "Slot") ?? "").trim().toUpperCase();
 
-  if (area === "Showroom") {
-    zone = normalizeShowroomZone(zone);
-    rowPosition = normalizeShowroomColumn(rowPosition);
-    slotPosition = normalizeShowroomSlot(slotPosition);
+  area = normalizePropertyArea(area);
+  zone = normalizePropertyZone(zone);
 
-    if (!isValidShowroomBay(zone, rowPosition, slotPosition)) {
-      throw new Error(getShowroomBayValidationMessage());
+  if (!getYardZoneValuesForArea(area).includes(zone)) {
+    throw new Error(`${area} zone must be one of: ${getYardZoneValuesForArea(area).join(", ")}.`);
+  }
+
+  if (isMappedLocationAreaZone(area, zone)) {
+    rowPosition = normalizePropertyColumn(rowPosition);
+    slotPosition = normalizePropertySlot(slotPosition);
+
+    const mapValidationMessage = getPropertyLocationValidationMessage(area, zone, rowPosition, slotPosition);
+
+    if (mapValidationMessage) {
+      throw new Error(mapValidationMessage);
     }
 
-    const bayKey = getShowroomBayKey(zone, rowPosition, slotPosition);
-    const occupyingUnit = reserved.showroomBays?.get(bayKey);
+    const propertyKey = getPropertyLocationKey(area, zone, rowPosition, slotPosition);
+    const occupyingUnit = reserved.propertyLocations?.get(propertyKey);
 
     if (occupyingUnit) {
-      throw new Error(`${zone} / ${rowPosition}${slotPosition} is already occupied by ${occupyingUnit}.`);
+      const locationLabel = [area, zone, rowPosition, slotPosition].filter(Boolean).join(" / ");
+      throw new Error(`${locationLabel} is already occupied by ${occupyingUnit}.`);
     }
   }
+
+  const equipmentType = normalizeYardChoice(
+    getIncomingValueByHeader(rowData, "Equipment Type"),
+    YARD_EQUIPMENT_TYPE_VALUES,
+    "Equipment Type",
+    "Forklift"
+  );
+  const hasExistingRow = Boolean(existingRow && Object.keys(existingRow).length);
+  const previousArea = normalizePropertyArea(existingRow.Area || "");
+  const previousZone = normalizePropertyZone(existingRow.Zone || "");
+  const previousRow = normalizePropertyColumn(existingRow.Row || "");
+  const previousSlot = normalizePropertySlot(existingRow.Slot || "");
+  const locationChanged = hasExistingRow && (
+    previousArea !== area ||
+    previousZone !== zone ||
+    previousRow !== rowPosition ||
+    previousSlot !== slotPosition
+  );
+  const incomingLastMovedDate = String(getIncomingValueByHeader(rowData, "Last Moved Date") ?? "").trim();
+  const lastMovedDate = locationChanged ? getTodayDateString() : incomingLastMovedDate;
 
   const cleanRow = {
     "Placement ID": options.placementId || existingRow["Placement ID"] || "",
     "Unit Number": unitNumber,
     "Serial Number": String(getIncomingValueByHeader(rowData, "Serial Number") ?? "").trim(),
-    "Equipment Type": String(getIncomingValueByHeader(rowData, "Equipment Type") ?? "").trim(),
+    "Equipment Type": equipmentType,
     Make: String(getIncomingValueByHeader(rowData, "Make") ?? "").trim(),
     Model: String(getIncomingValueByHeader(rowData, "Model") ?? "").trim(),
     Year: normalizeYardYear(getIncomingValueByHeader(rowData, "Year")),
+    Hours: String(getIncomingValueByHeader(rowData, "Hours") ?? "").trim(),
+    Capacity: String(getIncomingValueByHeader(rowData, "Capacity") ?? "").trim(),
+    "Tire Type": String(getIncomingValueByHeader(rowData, "Tire Type") ?? "").trim(),
+    "Fuel Type": String(getIncomingValueByHeader(rowData, "Fuel Type") ?? "").trim(),
+    "Mast Raised": String(getIncomingValueByHeader(rowData, "Mast Raised") ?? "").trim(),
+    "Mast Lowered": String(getIncomingValueByHeader(rowData, "Mast Lowered") ?? "").trim(),
+    Attachment: String(getIncomingValueByHeader(rowData, "Attachment") ?? "").trim(),
     Area: area,
     Zone: zone,
     Row: rowPosition,
     Slot: slotPosition,
-    "Display Position": normalizeYardChoice(
-      getIncomingValueByHeader(rowData, "Display Position"),
-      YARD_DISPLAY_VALUES,
-      "Display Position",
-      "Not Displayed"
-    ),
     "Availability Status": availabilityStatus,
     "Condition Status": conditionStatus,
     "Customer Hold": normalizeYardChoice(
@@ -2791,7 +2929,7 @@ function buildYardRowFromRequest(headers, incomingRow, options = {}) {
       "Customer Hold",
       "No"
     ),
-    "Last Moved Date": String(getIncomingValueByHeader(rowData, "Last Moved Date") ?? "").trim(),
+    "Last Moved Date": lastMovedDate,
     "Moved By": String(getIncomingValueByHeader(rowData, "Moved By") ?? "").trim(),
     Notes: String(getIncomingValueByHeader(rowData, "Notes") ?? "").trim(),
     "Date Created": options.dateCreated || existingRow["Date Created"] || now,
@@ -2897,11 +3035,16 @@ function appendBulkYardInventoryRows(incomingRows) {
       const slotIndex = getHeaderIndex(headers, "Slot");
       const cleanArea = areaIndex >= 0 ? String(values[areaIndex] ?? "").trim() : "";
 
-      if (cleanArea === "Showroom") {
-        reserved.showroomBays.set(
-          getShowroomBayKey(values[zoneIndex], values[rowPositionIndex], values[slotIndex]),
-          cleanUnitNumber || placementId
-        );
+      if (isValidPropertyLocation(values[areaIndex], values[zoneIndex], values[rowPositionIndex], values[slotIndex])) {
+        const propertyKey = getPropertyLocationKey(values[areaIndex], values[zoneIndex], values[rowPositionIndex], values[slotIndex]);
+        reserved.propertyLocations.set(propertyKey, cleanUnitNumber || placementId);
+
+        if (normalizePropertyArea(values[areaIndex]) === "Showroom") {
+          reserved.showroomBays.set(
+            getShowroomBayKey(values[zoneIndex], values[rowPositionIndex], values[slotIndex]),
+            cleanUnitNumber || placementId
+          );
+        }
       }
 
       acceptedRows.push({
@@ -3113,11 +3256,17 @@ app.get("/api/yard/import-template", (req, res) => {
       "Make",
       "Model",
       "Year",
+      "Hours",
+      "Capacity",
+      "Tire Type",
+      "Fuel Type",
+      "Mast Raised",
+      "Mast Lowered",
+      "Attachment",
       "Area",
       "Zone",
       "Row",
       "Slot",
-      "Display Position",
       "Availability Status",
       "Condition Status",
       "Customer Hold",
@@ -3133,11 +3282,16 @@ app.get("/api/yard/import-template", (req, res) => {
       "Toyota",
       "8FGCU25",
       "2019",
+      "2450",
+      "Cushion",
+      "Propane",
+      "189 in",
+      "83 in",
+      "Side Shifter",
       "Showroom",
-      "Section 5",
+      "Section 1",
       "A",
       "19",
-      "Indoor Display",
       "Available",
       "Ready",
       "No",

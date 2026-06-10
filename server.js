@@ -2373,6 +2373,32 @@ const YARD_HEADERS = [
   "Date Created",
   "Last Updated",
 ];
+
+const YARD_IMPORT_COLUMNS = [
+  "Unit Number",
+  "Serial Number",
+  "Equipment Type",
+  "Make",
+  "Model",
+  "Year",
+  "Hours",
+  "Capacity",
+  "Tire Type",
+  "Fuel Type",
+  "Mast Raised",
+  "Mast Lowered",
+  "Attachment",
+  "Area",
+  "Zone",
+  "Row",
+  "Slot",
+  "Availability Status",
+  "Condition Status",
+  "Customer Hold",
+  "Last Moved Date",
+  "Moved By",
+  "Notes",
+];
 const YARD_AREA_VALUES = [
   "Transportation Bay",
   "Showroom",
@@ -3247,33 +3273,114 @@ app.get("/api/yard/columns", (req, res) => {
   }
 });
 
+
+function normalizeYardImportHeader(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function isYardImportHeaderRow(cells) {
+  if (!Array.isArray(cells) || cells.length < 2) {
+    return false;
+  }
+
+  const normalizedCells = cells.map(normalizeYardImportHeader);
+  const requiredHeaderCount = YARD_IMPORT_COLUMNS.filter((column) => {
+    return normalizedCells.includes(normalizeYardImportHeader(column));
+  }).length;
+
+  return requiredHeaderCount >= 4 && normalizedCells.includes("unit number");
+}
+
+function parseYardImportRowsFromBuffer(buffer, fileName = "yard-import.xlsx") {
+  if (!Buffer.isBuffer(buffer) || !buffer.length) {
+    throw new Error("No import file data was received.");
+  }
+
+  const safeFileName = String(fileName || "yard-import.xlsx");
+  const lowerFileName = safeFileName.toLowerCase();
+  let workbook;
+
+  if (lowerFileName.endsWith(".csv")) {
+    workbook = XLSX.read(buffer.toString("utf8"), {
+      type: "string",
+      raw: false,
+    });
+  } else if (lowerFileName.endsWith(".xls") || lowerFileName.endsWith(".xlsx")) {
+    workbook = XLSX.read(buffer, {
+      type: "buffer",
+      cellDates: false,
+    });
+  } else {
+    throw new Error("Upload a .csv, .xls, or .xlsx Yard Inventory import file.");
+  }
+
+  const sheetName = workbook.SheetNames[0];
+
+  if (!sheetName) {
+    throw new Error("The uploaded import file does not contain any sheets.");
+  }
+
+  const worksheet = workbook.Sheets[sheetName];
+  const rowsAsArrays = XLSX.utils.sheet_to_json(worksheet, {
+    header: 1,
+    defval: "",
+    blankrows: false,
+  });
+
+  const nonEmptyRows = rowsAsArrays.filter((row) => {
+    return Array.isArray(row) && row.some((cell) => String(cell ?? "").trim() !== "");
+  });
+
+  if (!nonEmptyRows.length) {
+    throw new Error("The uploaded import file did not contain any equipment rows.");
+  }
+
+  const firstRow = nonEmptyRows[0];
+  const hasHeaderRow = isYardImportHeaderRow(firstRow);
+  const dataRows = hasHeaderRow ? nonEmptyRows.slice(1) : nonEmptyRows;
+  const headerIndexByColumn = new Map();
+
+  if (hasHeaderRow) {
+    firstRow.forEach((cell, index) => {
+      headerIndexByColumn.set(normalizeYardImportHeader(cell), index);
+    });
+  }
+
+  const parsedRows = dataRows
+    .map((cells) => {
+      const row = {};
+
+      YARD_IMPORT_COLUMNS.forEach((column, defaultIndex) => {
+        const normalizedColumn = normalizeYardImportHeader(column);
+        const columnIndex = hasHeaderRow && headerIndexByColumn.has(normalizedColumn)
+          ? headerIndexByColumn.get(normalizedColumn)
+          : defaultIndex;
+        row[column] = cells[columnIndex] !== undefined ? String(cells[columnIndex] ?? "").trim() : "";
+      });
+
+      return row;
+    })
+    .filter((row) => {
+      return YARD_IMPORT_COLUMNS.some((column) => String(row[column] ?? "").trim() !== "");
+    });
+
+  if (!parsedRows.length) {
+    throw new Error("The uploaded import file did not contain any usable equipment rows.");
+  }
+
+  return {
+    sheetName,
+    rows: parsedRows,
+  };
+}
+
 app.get("/api/yard/import-template", (req, res) => {
   try {
-    const importHeaders = [
-      "Unit Number",
-      "Serial Number",
-      "Equipment Type",
-      "Make",
-      "Model",
-      "Year",
-      "Hours",
-      "Capacity",
-      "Tire Type",
-      "Fuel Type",
-      "Mast Raised",
-      "Mast Lowered",
-      "Attachment",
-      "Area",
-      "Zone",
-      "Row",
-      "Slot",
-      "Availability Status",
-      "Condition Status",
-      "Customer Hold",
-      "Last Moved Date",
-      "Moved By",
-      "Notes",
-    ];
+    const importHeaders = YARD_IMPORT_COLUMNS;
 
     const sampleRow = [
       "AR 5000",
@@ -3283,6 +3390,7 @@ app.get("/api/yard/import-template", (req, res) => {
       "8FGCU25",
       "2019",
       "2450",
+      "5000 lbs",
       "Cushion",
       "Propane",
       "189 in",
@@ -3403,6 +3511,48 @@ app.post("/api/yard/bulk-add", (req, res) => {
     });
   }
 });
+
+
+app.post(
+  "/api/yard/upload-import",
+  express.raw({
+    type: [
+      "application/octet-stream",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "text/csv",
+      "text/plain",
+      "application/csv",
+    ],
+    limit: "25mb",
+  }),
+  (req, res) => {
+    try {
+      const rawFileName = req.get("X-File-Name") || "yard-inventory-import.xlsx";
+      const fileName = decodeURIComponent(rawFileName);
+      const parsedImport = parseYardImportRowsFromBuffer(req.body, fileName);
+      const result = appendBulkYardInventoryRows(parsedImport.rows);
+      const status = buildStatusSummary();
+
+      res.json({
+        ok: true,
+        action: "upload-yard-import-file",
+        message: "Yard Inventory import file uploaded successfully and saved to the yard inventory Excel file.",
+        fileName,
+        sourceSheetName: parsedImport.sheetName,
+        parsedRowCount: parsedImport.rows.length,
+        addedAt: new Date().toISOString(),
+        result,
+        status,
+      });
+    } catch (error) {
+      res.status(500).json({
+        ok: false,
+        error: error.message || "Failed to upload Yard Inventory import file.",
+      });
+    }
+  }
+);
 
 app.post("/api/yard/update-row", (req, res) => {
   try {

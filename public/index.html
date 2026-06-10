@@ -1749,6 +1749,52 @@
       font-weight: 800;
     }
 
+
+
+    .file-upload-dropzone {
+      border: 2px dashed var(--brand-blue);
+      border-radius: 12px;
+      background: #f0f7ff;
+      padding: 30px 18px;
+      text-align: center;
+      display: grid;
+      gap: 10px;
+      color: var(--brand-blue-dark);
+      cursor: pointer;
+      transition: 0.15s ease;
+    }
+
+    .file-upload-dropzone.drag-over {
+      background: #d9ecff;
+      border-color: var(--brand-blue-dark);
+      box-shadow: 0 0 0 4px rgba(22, 119, 255, 0.12);
+    }
+
+    .file-upload-dropzone strong {
+      font-size: 18px;
+      color: var(--brand-blue-dark);
+    }
+
+    .file-upload-dropzone span {
+      color: var(--text-soft);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .file-upload-file-name {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px 12px;
+      color: var(--brand-blue-dark);
+      font-weight: 700;
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
     .saved-table-card {
       border: 1px solid var(--border);
       border-radius: var(--radius);
@@ -2817,6 +2863,9 @@
                       <button class="secondary" type="button" onclick="openBulkYardModal()">
                         Add Bulk Equipment
                       </button>
+                      <button class="secondary" type="button" onclick="openYardFileUploadModal()">
+                        Upload CSV/XLSX
+                      </button>
                       <button id="editSelectedYardButton" class="orange" type="button" onclick="openEditSelectedYardModal()" disabled>
                         Edit Selected Row
                       </button>
@@ -3408,6 +3457,60 @@
     </div>
   </div>
 
+
+  <div id="yardFileUploadModal" class="modal-backdrop" aria-hidden="true">
+    <div class="bulk-modal" role="dialog" aria-modal="true" aria-labelledby="yardFileUploadTitle">
+      <div class="bulk-modal-header">
+        <div>
+          <h2 id="yardFileUploadTitle">Upload CSV/XLSX</h2>
+          <p>
+            Drag and drop a completed Yard Inventory import template, or choose a .csv, .xls, or .xlsx file.
+            The file columns should match the Download Import Template format.
+          </p>
+        </div>
+
+        <button class="secondary bulk-close-button" type="button" onclick="closeYardFileUploadModal()">×</button>
+      </div>
+
+      <input
+        id="yardFileUploadInput"
+        type="file"
+        accept=".csv,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+        style="display: none;"
+        onchange="handleYardFileInputChange(event)"
+      />
+
+      <div
+        id="yardFileDropZone"
+        class="file-upload-dropzone"
+        role="button"
+        tabindex="0"
+        onclick="openYardFilePicker()"
+        onkeydown="handleYardFileDropZoneKeydown(event)"
+        ondragover="handleYardFileDragOver(event)"
+        ondragleave="handleYardFileDragLeave(event)"
+        ondrop="handleYardFileDrop(event)"
+      >
+        <strong>Drop CSV/XLSX file here</strong>
+        <span>Use the Yard Inventory import template. Header rows are ignored automatically.</span>
+        <span>Click this box to browse for a file.</span>
+      </div>
+
+      <div id="yardFileUploadName" class="file-upload-file-name" style="margin-top: 14px;">
+        No file selected.
+      </div>
+
+      <div class="bulk-toolbar">
+        <div id="yardFileUploadMessage" class="bulk-message">Choose a file to upload equipment placements.</div>
+
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+          <button class="secondary" type="button" onclick="clearYardFileUploadSelection()">Clear File</button>
+          <button class="primary" type="button" onclick="uploadYardImportFile()">Upload File Rows</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="bulkLabelsModal" class="modal-backdrop" aria-hidden="true">
     <div class="bulk-modal" role="dialog" aria-modal="true" aria-labelledby="bulkLabelsTitle">
       <div class="bulk-modal-header">
@@ -3512,6 +3615,7 @@
     let currentYardAddDefaults = {};
     let currentShowroomInlineAddDefaults = {};
     let parsedBulkYardRows = [];
+    let selectedYardImportFile = null;
     let lastPrinterConnected = false;
 
     const workflowSteps = {
@@ -6575,6 +6679,215 @@
 
       if (type) {
         messageEl.classList.add(type);
+      }
+    }
+
+
+    function setYardFileUploadMessage(message, type = "") {
+      const messageEl = document.getElementById("yardFileUploadMessage");
+
+      if (!messageEl) {
+        return;
+      }
+
+      messageEl.textContent = message || "";
+      messageEl.className = "bulk-message";
+
+      if (type) {
+        messageEl.classList.add(type);
+      }
+    }
+
+    function openYardFileUploadModal() {
+      const modal = document.getElementById("yardFileUploadModal");
+
+      clearYardFileUploadSelection(false);
+
+      if (modal) {
+        modal.classList.add("open");
+        modal.setAttribute("aria-hidden", "false");
+      }
+    }
+
+    function closeYardFileUploadModal() {
+      const modal = document.getElementById("yardFileUploadModal");
+
+      if (!modal) {
+        return;
+      }
+
+      modal.classList.remove("open");
+      modal.setAttribute("aria-hidden", "true");
+    }
+
+    function openYardFilePicker() {
+      const input = document.getElementById("yardFileUploadInput");
+
+      if (input) {
+        input.click();
+      }
+    }
+
+    function handleYardFileDropZoneKeydown(event) {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openYardFilePicker();
+      }
+    }
+
+    function handleYardFileDragOver(event) {
+      event.preventDefault();
+      const dropZone = document.getElementById("yardFileDropZone");
+
+      if (dropZone) {
+        dropZone.classList.add("drag-over");
+      }
+    }
+
+    function handleYardFileDragLeave(event) {
+      event.preventDefault();
+      const dropZone = document.getElementById("yardFileDropZone");
+
+      if (dropZone) {
+        dropZone.classList.remove("drag-over");
+      }
+    }
+
+    function handleYardFileDrop(event) {
+      event.preventDefault();
+      const dropZone = document.getElementById("yardFileDropZone");
+
+      if (dropZone) {
+        dropZone.classList.remove("drag-over");
+      }
+
+      const file = event.dataTransfer?.files?.[0];
+      setSelectedYardImportFile(file);
+    }
+
+    function handleYardFileInputChange(event) {
+      const file = event.target?.files?.[0];
+      setSelectedYardImportFile(file);
+    }
+
+    function setSelectedYardImportFile(file) {
+      const fileNameEl = document.getElementById("yardFileUploadName");
+
+      if (!file) {
+        selectedYardImportFile = null;
+
+        if (fileNameEl) {
+          fileNameEl.textContent = "No file selected.";
+        }
+
+        setYardFileUploadMessage("Choose a file to upload equipment placements.");
+        return;
+      }
+
+      const fileName = String(file.name || "");
+      const validExtension = /\.(csv|xls|xlsx)$/i.test(fileName);
+
+      if (!validExtension) {
+        selectedYardImportFile = null;
+
+        if (fileNameEl) {
+          fileNameEl.textContent = "No file selected.";
+        }
+
+        setYardFileUploadMessage("Upload a .csv, .xls, or .xlsx file that uses the Yard Inventory import template.", "error");
+        return;
+      }
+
+      selectedYardImportFile = file;
+
+      if (fileNameEl) {
+        fileNameEl.textContent = `${file.name} (${Math.max(1, Math.round(file.size / 1024))} KB)`;
+      }
+
+      setYardFileUploadMessage("File selected. Click Upload File Rows to add these equipment placements.", "success");
+    }
+
+    function clearYardFileUploadSelection(showMessage = true) {
+      selectedYardImportFile = null;
+
+      const input = document.getElementById("yardFileUploadInput");
+      const fileNameEl = document.getElementById("yardFileUploadName");
+      const dropZone = document.getElementById("yardFileDropZone");
+
+      if (input) {
+        input.value = "";
+      }
+
+      if (fileNameEl) {
+        fileNameEl.textContent = "No file selected.";
+      }
+
+      if (dropZone) {
+        dropZone.classList.remove("drag-over");
+      }
+
+      if (showMessage) {
+        setYardFileUploadMessage("File selection cleared.");
+      } else {
+        setYardFileUploadMessage("Choose a file to upload equipment placements.");
+      }
+    }
+
+    async function uploadYardImportFile() {
+      if (!selectedYardImportFile) {
+        setYardFileUploadMessage("Choose or drop a CSV/XLSX file before uploading.", "error");
+        return;
+      }
+
+      const confirmed = confirm(
+        `Upload equipment placements from ${selectedYardImportFile.name}?\n\n` +
+          "This will append valid rows to data/yard-inventory.xlsx. Placement ID, Date Created, and Last Updated will be generated."
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      setYardFileUploadMessage("Uploading file rows...", "");
+      setYardInventoryMessage("Uploading Yard Inventory file...", "");
+
+      try {
+        const buffer = await selectedYardImportFile.arrayBuffer();
+        const response = await fetch("/api/yard/upload-import", {
+          method: "POST",
+          headers: {
+            "Content-Type": selectedYardImportFile.type || "application/octet-stream",
+            "X-File-Name": encodeURIComponent(selectedYardImportFile.name),
+          },
+          body: buffer,
+        });
+        const data = await response.json();
+
+        if (!data.ok) {
+          throw new Error(data.error || "File upload failed.");
+        }
+
+        setYardFileUploadMessage(
+          `Uploaded ${data.result.uploadedRowCount} row(s). Skipped ${data.result.skippedRowCount} row(s).`,
+          "success"
+        );
+        setYardInventoryMessage(`File upload complete. Uploaded ${data.result.uploadedRowCount} yard row(s).`, "success");
+        setOutput(
+          `Yard Inventory file upload complete.\n` +
+            `File: ${data.fileName || selectedYardImportFile.name}\n` +
+            `Parsed rows: ${data.parsedRowCount || 0}\n` +
+            `Uploaded: ${data.result.uploadedRowCount} row(s)\n` +
+            `Skipped: ${data.result.skippedRowCount} row(s)\n` +
+            `Backup: ${data.result.backupFile || "created"}`
+        );
+
+        await loadYardInventoryRows();
+        clearYardFileUploadSelection(false);
+        closeYardFileUploadModal();
+      } catch (error) {
+        setYardFileUploadMessage(error.message || "File upload failed.", "error");
+        setYardInventoryMessage(error.message || "File upload failed.", "error");
+        setOutput(error.message || "File upload failed.");
       }
     }
 

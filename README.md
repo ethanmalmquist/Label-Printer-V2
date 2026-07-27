@@ -2,7 +2,7 @@
 
 This folder converts the three Excel label scripts into a local web page.
 
-Open this on the computer that can reach the Zebra printer at `192.168.1.126:9100`.
+Open this on the computer that can reach the Zebra printer at `192.168.1.125:9100`.
 
 ## Install
 
@@ -45,19 +45,19 @@ http://localhost:3000
 Default printer target is:
 
 ```text
-192.168.1.126:9100
+192.168.1.125:9100
 ```
 
 You can override it when launching:
 
 ```bash
-PRINTER_IP=192.168.1.126 PRINTER_PORT=9100 npm start
+PRINTER_IP=192.168.1.125 PRINTER_PORT=9100 npm start
 ```
 
 On Windows PowerShell:
 
 ```powershell
-$env:PRINTER_IP="192.168.1.126"; $env:PRINTER_PORT="9100"; npm start
+$env:PRINTER_IP="192.168.1.125"; $env:PRINTER_PORT="9100"; npm start
 ```
 "# Zebra_Barcoding_Function_Test" 
 "# label-printer-localhost-labelary" 

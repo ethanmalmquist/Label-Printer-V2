@@ -44,7 +44,7 @@ function getMode(req) {
 }
 
 function getPrinterHost() {
-  return printer.host || printer.ip || "192.168.1.126";
+  return printer.host || printer.ip || "192.168.1.125";
 }
 
 function getPrinterPort() {

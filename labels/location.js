@@ -21,9 +21,6 @@ const XLSX = require("xlsx");
  * Location Barcode is generated from Aisle + Bay + Level + Bin.
  */
 
-const PRINTER_IP = "192.168.1.126";
-const PRINTER_PORT = 9100;
-
 const EXCEL_FILE = path.join(__dirname, "..", "data", "location-labels.xlsx");
 const SHEET_NAME = "Sheet1";
 

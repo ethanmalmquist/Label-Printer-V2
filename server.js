@@ -2,8 +2,10 @@
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
+const https = require("https");
 const PDFDocument = require("pdfkit");
 const XLSX = require("xlsx");
+const { createProxyMiddleware } = require("http-proxy-middleware");
 const { printer } = require("./config");
 const printerClient = require("./lib/printer");
 
@@ -22,6 +24,26 @@ let printJobHistory = [];
 const MAX_PRINT_HISTORY_ITEMS = 25;
 const FIXED_COMPANY_NAME = "Bulldog Forklifts";
 const PRODUCT_BARCODE_LENGTH = 12;
+
+// CRM platform runs as its own NestJS process (default http://localhost:3100).
+// This proxies /crm/* through to it, stripping the prefix, so the whole thing
+// is reachable from one site (this server's origin) without any CORS setup.
+const CRM_TARGET = process.env.CRM_TARGET || "http://localhost:3100";
+app.use(
+  "/crm",
+  createProxyMiddleware({
+    target: CRM_TARGET,
+    changeOrigin: true,
+    pathRewrite: { "^/crm": "" },
+    on: {
+      error: (err, req, res) => {
+        console.error("CRM proxy error:", err.message);
+        res.writeHead(502, { "Content-Type": "text/plain" });
+        res.end(`CRM platform is not reachable at ${CRM_TARGET}. Is it running (npm start in crm-platform)?`);
+      },
+    },
+  })
+);
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
@@ -1549,6 +1571,41 @@ const PARTS_CATEGORY_VALUES = [
 ];
 const PARTS_STATUS_VALUES = ["Active", "Inactive", "Discontinued"];
 
+const PARTS_IMPORT_COLUMNS = [
+  "Part Number",
+  "Part Name",
+  "Description",
+  "Category",
+  "Vendor",
+  "Unit Cost",
+  "Sell Price",
+  "Quantity On Hand",
+  "Reorder Point",
+  "Primary Location",
+  "Barcode 128",
+  "Status",
+  "Notes",
+];
+
+// Accepts "A/01/01/01", "A/1/1/1", "A-1-1-1", or the already-canonical "A010101" form
+// and canonicalizes to <Letter><2-digit><2-digit><2-digit>, e.g. "A010101".
+function normalizePrimaryLocationCode(value) {
+  const text = String(value ?? "").trim();
+
+  if (!text) {
+    return "";
+  }
+
+  const segmentMatch = text.match(/^([A-Za-z])[\s/_-]+(\d{1,2})[\s/_-]+(\d{1,2})[\s/_-]+(\d{1,2})$/);
+
+  if (segmentMatch) {
+    const [, letter, bay, level, bin] = segmentMatch;
+    return `${letter.toUpperCase()}${bay.padStart(2, "0")}${level.padStart(2, "0")}${bin.padStart(2, "0")}`;
+  }
+
+  return text.toUpperCase();
+}
+
 function ensurePartsInventoryWorkbook() {
   const dataDir = path.dirname(partsInventoryFile);
 
@@ -1619,7 +1676,7 @@ function readPartsInventoryWorkbook() {
     writeWorkbookToDisk(workbook, partsInventoryFile);
   }
 
-  const usableHeaders = YARD_HEADERS.filter((header) => String(header || "").trim() !== "");
+  const usableHeaders = PARTS_HEADERS.filter((header) => String(header || "").trim() !== "");
 
   return {
     filePath: partsInventoryFile,
@@ -1640,7 +1697,7 @@ function getPartsRowsAsObjects() {
     blankrows: false,
   }).map((row, index) => {
     const cleanRow = { __excelRowNumber: index + 2 };
-    YARD_HEADERS.forEach((header) => {
+    PARTS_HEADERS.forEach((header) => {
       cleanRow[header] = getIncomingValueByHeader(row, header) ?? "";
     });
     return cleanRow;
@@ -1788,9 +1845,14 @@ function buildPartsRowFromRequest(headers, incomingRow, options = {}) {
     throw new Error(`Part Number ${partNumber} already exists.`);
   }
 
-  const barcode = normalizePartBarcode(getIncomingValueByHeader(rowData, "Barcode 128"), reserved.barcodes);
+  const incomingBarcode = String(getIncomingValueByHeader(rowData, "Barcode 128") ?? "").trim();
+  const barcode = normalizePartBarcode(incomingBarcode, reserved.barcodes);
 
-  if (reserved.barcodes.has(barcode)) {
+  // Only re-check user-supplied barcodes for duplicates. When incomingBarcode is blank,
+  // normalizePartBarcode() auto-generates one via generateUniqueProductBarcode(), which
+  // already reserves it as a side effect — re-checking here would always false-positive
+  // on the barcode it just generated.
+  if (incomingBarcode && reserved.barcodes.has(barcode)) {
     throw new Error(`Barcode 128 ${barcode} already exists.`);
   }
 
@@ -1831,7 +1893,7 @@ function buildPartsRowFromRequest(headers, incomingRow, options = {}) {
     "Sell Price": sellPrice,
     "Quantity On Hand": quantityOnHand,
     "Reorder Point": reorderPoint,
-    "Primary Location": String(getIncomingValueByHeader(rowData, "Primary Location") ?? "").trim().toUpperCase(),
+    "Primary Location": normalizePrimaryLocationCode(getIncomingValueByHeader(rowData, "Primary Location")),
     "Barcode 128": barcode,
     Status: normalizePartsChoice(
       getIncomingValueByHeader(rowData, "Status"),
@@ -2037,6 +2099,7 @@ function appendBulkPartsInventoryRows(incomingRows) {
       skippedRows.push({
         sourceRowNumber: index + 1,
         error: error.message,
+        row: incomingRow,
       });
     }
   });
@@ -2158,21 +2221,7 @@ app.get("/api/parts/columns", (req, res) => {
 
 app.get("/api/parts/import-template", (req, res) => {
   try {
-    const importHeaders = [
-      "Part Number",
-      "Part Name",
-      "Description",
-      "Category",
-      "Vendor",
-      "Unit Cost",
-      "Sell Price",
-      "Quantity On Hand",
-      "Reorder Point",
-      "Primary Location",
-      "Barcode 128",
-      "Status",
-      "Notes",
-    ];
+    const importHeaders = PARTS_IMPORT_COLUMNS;
 
     const sampleRow = [
       "HYD-1001",
@@ -2184,7 +2233,7 @@ app.get("/api/parts/import-template", (req, res) => {
       24.99,
       10,
       3,
-      "A010101",
+      "A/01/01/01",
       "",
       "Active",
       "Barcode can be left blank to auto-generate",
@@ -2290,6 +2339,204 @@ app.post("/api/parts/bulk-add", (req, res) => {
     res.status(500).json({
       ok: false,
       error: error.message,
+    });
+  }
+});
+
+function normalizePartsImportHeader(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function isPartsImportHeaderRow(cells) {
+  if (!Array.isArray(cells) || cells.length < 2) {
+    return false;
+  }
+
+  const normalizedCells = cells.map(normalizePartsImportHeader);
+  const requiredHeaderCount = PARTS_IMPORT_COLUMNS.filter((column) => {
+    return normalizedCells.includes(normalizePartsImportHeader(column));
+  }).length;
+
+  return requiredHeaderCount >= 4 && normalizedCells.includes("part number");
+}
+
+function parsePartsImportRowsFromBuffer(buffer, fileName = "parts-import.xlsx") {
+  if (!Buffer.isBuffer(buffer) || !buffer.length) {
+    throw new Error("No import file data was received.");
+  }
+
+  const safeFileName = String(fileName || "parts-import.xlsx");
+  const lowerFileName = safeFileName.toLowerCase();
+  let workbook;
+
+  if (lowerFileName.endsWith(".csv")) {
+    workbook = XLSX.read(buffer.toString("utf8"), {
+      type: "string",
+      raw: false,
+    });
+  } else if (lowerFileName.endsWith(".xls") || lowerFileName.endsWith(".xlsx")) {
+    workbook = XLSX.read(buffer, {
+      type: "buffer",
+      cellDates: false,
+    });
+  } else {
+    throw new Error("Upload a .csv, .xls, or .xlsx Parts Inventory import file.");
+  }
+
+  const sheetName = workbook.SheetNames[0];
+
+  if (!sheetName) {
+    throw new Error("The uploaded import file does not contain any sheets.");
+  }
+
+  const worksheet = workbook.Sheets[sheetName];
+  const rowsAsArrays = XLSX.utils.sheet_to_json(worksheet, {
+    header: 1,
+    defval: "",
+    blankrows: false,
+  });
+
+  const nonEmptyRows = rowsAsArrays.filter((row) => {
+    return Array.isArray(row) && row.some((cell) => String(cell ?? "").trim() !== "");
+  });
+
+  if (!nonEmptyRows.length) {
+    throw new Error("The uploaded import file did not contain any part rows.");
+  }
+
+  const firstRow = nonEmptyRows[0];
+  const hasHeaderRow = isPartsImportHeaderRow(firstRow);
+  const dataRows = hasHeaderRow ? nonEmptyRows.slice(1) : nonEmptyRows;
+  const headerIndexByColumn = new Map();
+
+  if (hasHeaderRow) {
+    firstRow.forEach((cell, index) => {
+      headerIndexByColumn.set(normalizePartsImportHeader(cell), index);
+    });
+  }
+
+  const parsedRows = dataRows
+    .map((cells) => {
+      const row = {};
+
+      PARTS_IMPORT_COLUMNS.forEach((column, defaultIndex) => {
+        const normalizedColumn = normalizePartsImportHeader(column);
+        const columnIndex = hasHeaderRow && headerIndexByColumn.has(normalizedColumn)
+          ? headerIndexByColumn.get(normalizedColumn)
+          : defaultIndex;
+        row[column] = cells[columnIndex] !== undefined ? String(cells[columnIndex] ?? "").trim() : "";
+      });
+
+      return row;
+    })
+    .filter((row) => {
+      return PARTS_IMPORT_COLUMNS.some((column) => String(row[column] ?? "").trim() !== "");
+    });
+
+  if (!parsedRows.length) {
+    throw new Error("The uploaded import file did not contain any usable part rows.");
+  }
+
+  return {
+    sheetName,
+    rows: parsedRows,
+  };
+}
+
+app.post(
+  "/api/parts/upload-import",
+  express.raw({
+    type: [
+      "application/octet-stream",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "text/csv",
+      "text/plain",
+      "application/csv",
+    ],
+    limit: "25mb",
+  }),
+  (req, res) => {
+    try {
+      const rawFileName = req.get("X-File-Name") || "parts-inventory-import.xlsx";
+      const fileName = decodeURIComponent(rawFileName);
+      const parsedImport = parsePartsImportRowsFromBuffer(req.body, fileName);
+      const result = appendBulkPartsInventoryRows(parsedImport.rows);
+      const status = buildStatusSummary();
+
+      res.json({
+        ok: true,
+        action: "upload-parts-import-file",
+        message: "Parts Inventory import file uploaded successfully and saved to the parts inventory Excel file.",
+        fileName,
+        sourceSheetName: parsedImport.sheetName,
+        parsedRowCount: parsedImport.rows.length,
+        addedAt: new Date().toISOString(),
+        result,
+        status,
+      });
+    } catch (error) {
+      res.status(500).json({
+        ok: false,
+        error: error.message || "Failed to upload Parts Inventory import file.",
+      });
+    }
+  }
+);
+
+app.post("/api/parts/export-skipped-rows", (req, res) => {
+  try {
+    const skippedRows = Array.isArray(req.body?.skippedRows) ? req.body.skippedRows : [];
+
+    if (!skippedRows.length) {
+      throw new Error("No skipped rows to export.");
+    }
+
+    const exportHeaders = [...PARTS_IMPORT_COLUMNS, "Error"];
+    const dataRows = skippedRows.map((entry) => {
+      const row = entry.row || {};
+
+      return [
+        ...PARTS_IMPORT_COLUMNS.map((column) => getIncomingValueByHeader(row, column) ?? ""),
+        entry.error || "Skipped",
+      ];
+    });
+
+    const worksheet = XLSX.utils.aoa_to_sheet([exportHeaders, ...dataRows]);
+
+    worksheet["!cols"] = exportHeaders.map((header) => {
+      return {
+        wch: Math.max(String(header).length + 4, 16),
+      };
+    });
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Skipped Parts Rows");
+
+    const buffer = XLSX.write(workbook, {
+      bookType: "xlsx",
+      type: "buffer",
+    });
+
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="parts-inventory-skipped-rows.xlsx"'
+    );
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+
+    res.send(buffer);
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: error.message || "Failed to export skipped rows.",
     });
   }
 });
@@ -4304,6 +4551,154 @@ app.post("/api/raw-zpl", async (req, res) => {
   }
 });
 
+const visionTrainingDir = path.join(__dirname, "data", "vision-training");
+const visionManifestFile = path.join(visionTrainingDir, "manifest.jsonl");
+
+function sanitizePartNumberForPath(partNumber) {
+  const cleaned = String(partNumber || "")
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "_");
+
+  return cleaned || "UNKNOWN";
+}
+
+function ensureVisionTrainingPartDir(partNumber) {
+  const dir = path.join(visionTrainingDir, sanitizePartNumberForPath(partNumber));
+
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, {
+      recursive: true,
+    });
+  }
+
+  return dir;
+}
+
+function countVisionTrainingImages(partNumber) {
+  const dir = path.join(visionTrainingDir, sanitizePartNumberForPath(partNumber));
+
+  if (!fs.existsSync(dir)) {
+    return 0;
+  }
+
+  return fs.readdirSync(dir).filter((name) => /\.(jpe?g|png)$/i.test(name)).length;
+}
+
+app.post("/api/vision/capture", (req, res) => {
+  try {
+    const partNumber = String(req.body?.partNumber || "").trim();
+    const imageDataUrl = String(req.body?.imageDataUrl || "");
+    const source = String(req.body?.source || "manual").trim() || "manual";
+
+    if (!partNumber) {
+      throw new Error("partNumber is required.");
+    }
+
+    const match = imageDataUrl.match(/^data:image\/(jpeg|jpg|png);base64,(.+)$/i);
+
+    if (!match) {
+      throw new Error("imageDataUrl must be a base64 data URL (image/jpeg or image/png).");
+    }
+
+    const extension = match[1].toLowerCase() === "png" ? "png" : "jpg";
+    const buffer = Buffer.from(match[2], "base64");
+
+    const dir = ensureVisionTrainingPartDir(partNumber);
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .replace("T", "_")
+      .replace("Z", "");
+    const fileName = `${timestamp}.${extension}`;
+    const filePath = path.join(dir, fileName);
+
+    fs.writeFileSync(filePath, buffer);
+
+    fs.appendFileSync(
+      visionManifestFile,
+      JSON.stringify({
+        partNumber,
+        fileName,
+        relativePath: path.relative(__dirname, filePath),
+        source,
+        capturedAt: new Date().toISOString(),
+      }) + "\n"
+    );
+
+    res.json({
+      ok: true,
+      action: "capture-vision-training-image",
+      partNumber,
+      relativePath: path.relative(__dirname, filePath),
+      count: countVisionTrainingImages(partNumber),
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: error.message,
+    });
+  }
+});
+
+app.get("/api/vision/training-counts", (req, res) => {
+  try {
+    const partNumber = req.query?.partNumber ? String(req.query.partNumber) : "";
+
+    if (partNumber) {
+      return res.json({
+        ok: true,
+        partNumber,
+        count: countVisionTrainingImages(partNumber),
+      });
+    }
+
+    if (!fs.existsSync(visionTrainingDir)) {
+      return res.json({
+        ok: true,
+        counts: {},
+      });
+    }
+
+    const counts = {};
+
+    fs.readdirSync(visionTrainingDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .forEach((entry) => {
+        const dirPath = path.join(visionTrainingDir, entry.name);
+        counts[entry.name] = fs
+          .readdirSync(dirPath)
+          .filter((name) => /\.(jpe?g|png)$/i.test(name)).length;
+      });
+
+    res.json({
+      ok: true,
+      counts,
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: error.message,
+    });
+  }
+});
+
+// Served over plain HTTP too (on purpose) -- installing the cert is the one
+// step a phone has to do *before* it can reach the HTTPS port at all, so the
+// download link can't itself require HTTPS. This is a public cert (no
+// private key), safe to serve to anyone who can already reach this LAN.
+app.get("/certs/vision-cert.cer", (req, res) => {
+  const derPath = path.join(__dirname, "certs", "vision-cert.cer");
+  if (!fs.existsSync(derPath)) {
+    res.status(404).send("No certificate generated yet. Run: node scripts/generate-cert.js");
+    return;
+  }
+  // This content-type is what makes iOS Safari offer "Install Profile"
+  // instead of just downloading the file as a blob.
+  res.setHeader("Content-Type", "application/x-x509-ca-cert");
+  res.sendFile(derPath);
+});
+
 app.listen(PORT, () => {
   console.log(`Zebra ZD421 label dashboard running at http://localhost:${PORT}`);
   console.log(`Printer target: ${getPrinterHost()}:${getPrinterPort()}`);
@@ -4314,3 +4709,26 @@ app.listen(PORT, () => {
   console.log(`Parts:     ${partsInventoryFile}`);
   console.log(`Yard:      ${yardInventoryFile}`);
 });
+
+// HTTPS listener for phone/LAN testing -- getUserMedia (camera access) refuses
+// any origin that isn't localhost or real HTTPS, so Vision Scanner needs this
+// to work from a phone. Generate certs/ once via `node scripts/generate-cert.js`;
+// if it's missing, this silently skips rather than crashing the whole app.
+const HTTPS_PORT = Number(process.env.HTTPS_PORT || 3443);
+const httpsKeyPath = path.join(__dirname, "certs", "key.pem");
+const httpsCertPath = path.join(__dirname, "certs", "cert.pem");
+
+if (fs.existsSync(httpsKeyPath) && fs.existsSync(httpsCertPath)) {
+  const httpsOptions = {
+    key: fs.readFileSync(httpsKeyPath),
+    cert: fs.readFileSync(httpsCertPath),
+  };
+
+  https.createServer(httpsOptions, app).listen(HTTPS_PORT, () => {
+    console.log(`\nHTTPS (for phone/LAN camera access) running at https://localhost:${HTTPS_PORT}`);
+    console.log("On your phone (same Wi-Fi), first visit this to install the cert, then use the https:// URL below:");
+    console.log(`  http://<this-PC's-LAN-IP>:${PORT}/certs/vision-cert.cer`);
+  });
+} else {
+  console.log(`\nNo HTTPS cert found -- phone camera testing needs one. Run: node scripts/generate-cert.js`);
+}

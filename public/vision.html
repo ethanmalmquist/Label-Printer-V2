@@ -1,0 +1,1409 @@
+<!-- public/vision.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grabtech ERP | Vision Scanner</title>
+
+  <style>
+    :root {
+      --brand-blue: #1677ff;
+      --brand-blue-dark: #07145f;
+      --brand-blue-soft: #e6f4ff;
+      --brand-green: #16c784;
+      --brand-green-soft: #f6ffed;
+      --app-bg: #f7f9fc;
+      --panel-bg: #ffffff;
+      --border: #e5e7eb;
+      --border-dark: #d9d9d9;
+      --text: #111827;
+      --text-muted: #8c8c8c;
+      --text-soft: #64748b;
+      --danger: #ff4d4f;
+      --danger-soft: #fff1f0;
+      --warning: #faad14;
+      --warning-soft: #fff7e6;
+      --success: #52c41a;
+      --success-soft: #f6ffed;
+      --shadow: 0 4px 18px rgba(15, 23, 42, 0.06);
+      --radius: 10px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, Arial, Helvetica, sans-serif;
+      background: var(--app-bg);
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    button, input, select, textarea {
+      font-family: inherit;
+    }
+
+    .topbar {
+      height: 58px;
+      background: #f6ffe7;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+
+    .brand {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--brand-blue);
+    }
+
+    .brand span {
+      color: var(--brand-green);
+    }
+
+    .topbar a.back-link {
+      margin-left: auto;
+      color: var(--text-soft);
+      text-decoration: none;
+      font-size: 13px;
+      border: 1px solid var(--border-dark);
+      background: white;
+      padding: 6px 12px;
+      border-radius: 6px;
+    }
+
+    .topbar a.back-link:hover {
+      border-color: var(--brand-blue);
+      color: var(--brand-blue);
+    }
+
+    .page {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 24px 24px 60px;
+    }
+
+    h1 {
+      font-size: 22px;
+      margin: 0 0 4px;
+    }
+
+    .subtitle {
+      color: var(--text-soft);
+      margin: 0 0 20px;
+      font-size: 13px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(320px, 480px) 1fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    @media (max-width: 900px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background: var(--panel-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 16px;
+    }
+
+    .panel + .panel {
+      margin-top: 18px;
+    }
+
+    .panel h2 {
+      font-size: 15px;
+      margin: 0 0 10px;
+    }
+
+    .panel h3 {
+      font-size: 13px;
+      margin: 14px 0 8px;
+      color: var(--text-soft);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .camera-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      background: #0b1220;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .camera-wrap video, .camera-wrap canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .camera-wrap .placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #8ba0c4;
+      font-size: 13px;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    button.primary, button.secondary, button.danger {
+      border-radius: 6px;
+      border: 1px solid transparent;
+      padding: 8px 14px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: var(--brand-blue);
+      color: white;
+    }
+
+    button.primary:hover {
+      background: #0f5fe0;
+    }
+
+    button.secondary {
+      background: white;
+      border-color: var(--border-dark);
+      color: var(--text);
+    }
+
+    button.secondary:hover {
+      border-color: var(--brand-blue);
+      color: var(--brand-blue);
+    }
+
+    button.danger {
+      background: var(--danger-soft);
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .status-line {
+      margin-top: 10px;
+      font-size: 12.5px;
+      color: var(--text-soft);
+      min-height: 18px;
+    }
+
+    .status-line.error { color: var(--danger); }
+    .status-line.success { color: #1a8f4c; }
+
+    .target-toggle {
+      display: flex;
+      gap: 6px;
+      background: var(--app-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 4px;
+    }
+
+    .target-toggle button {
+      flex: 1;
+      border: none;
+      background: transparent;
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      color: var(--text-soft);
+    }
+
+    .target-toggle button.active {
+      background: var(--brand-blue);
+      color: white;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+    }
+
+    table th, table td {
+      text-align: left;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    table th {
+      color: var(--text-soft);
+      font-weight: 600;
+      font-size: 11.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .empty-row td {
+      color: var(--text-muted);
+      text-align: center;
+      padding: 14px;
+    }
+
+    .barcode-input-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .barcode-input-row input {
+      flex: 1;
+      border: 1px solid var(--border-dark);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 13px;
+    }
+
+    .match-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      background: var(--app-bg);
+    }
+
+    .match-card .code {
+      font-family: "SFMono-Regular", Consolas, monospace;
+      background: var(--brand-blue-soft);
+      color: var(--brand-blue-dark);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+
+    .kv-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 16px;
+      margin-top: 10px;
+      font-size: 12.5px;
+    }
+
+    .kv-grid .k {
+      color: var(--text-soft);
+    }
+
+    .kv-grid .v {
+      font-weight: 600;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .field.wide {
+      grid-column: 1 / -1;
+    }
+
+    .field label {
+      font-size: 11.5px;
+      color: var(--text-soft);
+    }
+
+    .field input, .field select {
+      border: 1px solid var(--border-dark);
+      border-radius: 6px;
+      padding: 7px 9px;
+      font-size: 13px;
+    }
+
+    .qty-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    .no-match {
+      background: var(--warning-soft);
+      border: 1px solid var(--warning);
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 13px;
+    }
+
+    .no-match .code {
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-weight: 700;
+    }
+
+    .snapshot-row {
+      display: grid;
+      grid-template-columns: 1.2fr 0.6fr 1.6fr 1fr 0.7fr 0.9fr;
+      gap: 6px;
+      align-items: center;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 12.5px;
+    }
+
+    .snapshot-row input, .snapshot-row select {
+      border: 1px solid var(--border-dark);
+      border-radius: 5px;
+      padding: 5px 6px;
+      font-size: 12.5px;
+      width: 100%;
+    }
+
+    .snapshot-header {
+      display: grid;
+      grid-template-columns: 1.2fr 0.6fr 1.6fr 1fr 0.7fr 0.9fr;
+      gap: 6px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--text-soft);
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border-dark);
+    }
+
+    .activity-log {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      max-height: 260px;
+      overflow-y: auto;
+      font-size: 12.5px;
+    }
+
+    .activity-log li {
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+    }
+
+    .activity-log li:last-child {
+      border-bottom: none;
+    }
+
+    .activity-log .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-top: 5px;
+      flex-shrink: 0;
+    }
+
+    .activity-log .dot.ok { background: var(--success); }
+    .activity-log .dot.fail { background: var(--danger); }
+    .activity-log .time {
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .pill {
+      display: inline-block;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--brand-blue-soft);
+      color: var(--brand-blue-dark);
+    }
+
+    .lib-badges {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    .lib-badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border-dark);
+      color: var(--text-soft);
+    }
+
+    .lib-badge.ready { border-color: var(--success); color: #1a8f4c; }
+    .lib-badge.failed { border-color: var(--danger); color: var(--danger); }
+  </style>
+</head>
+
+<body>
+  <div class="topbar">
+    <div class="brand">Grabtech<span>ERP</span> — Vision Scanner</div>
+    <a class="back-link" href="/index.html">‹ Back to Dashboard</a>
+  </div>
+
+  <div class="page">
+    <h1>Vision Scanner</h1>
+    <p class="subtitle">
+      Use this device's camera to count objects (Parts only) and scan Code 128 barcodes for Parts
+      or Yard Inventory. Writes go straight through the existing Excel-backed API — nothing here
+      is a separate database.
+    </p>
+
+    <div class="grid">
+      <div>
+        <div class="panel">
+          <h2>Camera</h2>
+          <div class="camera-wrap" id="cameraWrap">
+            <video id="video" autoplay playsinline muted></video>
+            <canvas id="overlay"></canvas>
+            <div class="placeholder" id="cameraPlaceholder">Camera is off. Click "Start Camera" to begin.</div>
+          </div>
+
+          <div class="btn-row">
+            <button class="primary" id="startCameraBtn" onclick="startCamera()">Start Camera</button>
+            <button class="secondary" id="stopCameraBtn" onclick="stopCamera()" disabled>Stop Camera</button>
+            <button class="secondary" id="snapshotBtn" onclick="captureSnapshot()" disabled>Capture Snapshot</button>
+          </div>
+
+          <div class="status-line" id="cameraStatus"></div>
+
+          <div class="lib-badges">
+            <span class="lib-badge" id="badge-tf">tf.js</span>
+            <span class="lib-badge" id="badge-cocossd">coco-ssd</span>
+            <span class="lib-badge" id="badge-zxing">ZXing</span>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Target</h2>
+          <div class="target-toggle">
+            <button id="targetPartsBtn" class="active" onclick="setTarget('parts')">Parts Inventory</button>
+            <button id="targetYardBtn" onclick="setTarget('yard')">Yard Inventory</button>
+          </div>
+          <div class="btn-row">
+            <button class="secondary" onclick="loadRowsForTarget(currentTarget)">Refresh Rows</button>
+          </div>
+          <div class="status-line" id="targetStatus"></div>
+        </div>
+
+        <div class="panel" id="liveCountsPanel">
+          <h2>Live Object Counts <span class="pill">Parts only</span></h2>
+          <table>
+            <thead>
+              <tr><th>Class</th><th>Count</th></tr>
+            </thead>
+            <tbody id="liveCountsBody">
+              <tr class="empty-row"><td colspan="2">Start the camera to see live detections.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel">
+          <h2>Barcode Result</h2>
+          <div class="barcode-input-row">
+            <input id="manualBarcodeInput" type="text" placeholder="Or type/paste a barcode manually..." onkeydown="if(event.key==='Enter'){lookUpManualBarcode();}" />
+            <button class="secondary" onclick="lookUpManualBarcode()">Look Up</button>
+          </div>
+          <div class="status-line" id="barcodeStatus">Point the camera at a Code 128 barcode, or type one above.</div>
+
+          <div id="matchArea" style="margin-top: 12px;"></div>
+        </div>
+
+        <div class="panel">
+          <h2>Snapshot &amp; Object Counting <span class="pill">Parts only</span></h2>
+          <p class="subtitle" style="margin-bottom: 8px;">
+            Capture a snapshot of the current detections, map each detected class to a real Part
+            Number, then Add to or Set its Quantity On Hand.
+          </p>
+          <div id="snapshotArea">
+            <div class="status-line">No snapshot captured yet.</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Activity Log</h2>
+          <ul class="activity-log" id="activityLog">
+            <li><span class="dot ok"></span><div><div>Ready.</div><div class="time">—</div></div></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vendored locally (public/vendor/) instead of a CDN <script src> -- a flaky
+       connection or network filtering that blocks jsdelivr used to take the whole
+       page down before the camera ever started. Still no npm dependency/build step;
+       these are just the same pinned-version minified files, served from this app.
+       (coco-ssd's *model weights* still load from Google's CDN on first use --
+       vendoring those too is a bigger lift, not done here.) -->
+  <script src="/vendor/tf.min.js"></script>
+  <script src="/vendor/coco-ssd.min.js"></script>
+  <script src="/vendor/zxing.min.js"></script>
+
+  <script>
+    // ---------- State ----------
+    let currentTarget = "parts"; // "parts" | "yard"
+    let partsRows = [];
+    let yardRows = [];
+    let mediaStream = null;
+    let cocoModel = null;
+    let detectLoopHandle = null;
+    let lastDetectAt = 0;
+    let currentDetections = []; // [{class, score, bbox}]
+    let latestClassCounts = {}; // class -> count, from most recent detection pass
+    let zxingReader = null;
+    let lastScannedCode = "";
+    let lastScannedAt = 0;
+    const SCAN_COOLDOWN_MS = 3000;
+
+    const YARD_ZONE_VALUES_BY_AREA = {
+      "Transportation Bay": ["Outbound", "Inbound"],
+      Showroom: ["Section 1", "Section 2", "Section 3", "Sold Lane"],
+      Yard: ["Section 1", "Section 2", "Section 3", "Section 4", "Rental"],
+    };
+    const YARD_AVAILABILITY_VALUES = [
+      "Available", "Rental Ready", "Reserved", "On Hold", "Sold", "Out on Rent", "In Service", "Unavailable", "Unknown",
+    ];
+    const YARD_CONDITION_VALUES = [
+      "Ready", "Needs Cleaning", "Needs Service", "Damaged", "Inspection Needed", "Battery Charging", "Fuel Needed", "Parts Needed", "Unknown",
+    ];
+    const YARD_CUSTOMER_HOLD_VALUES = ["No", "Yes"];
+    const PARTS_EDITABLE_COLUMNS = [
+      "Part Number", "Part Name", "Description", "Category", "Vendor", "Unit Cost", "Sell Price",
+      "Quantity On Hand", "Reorder Point", "Primary Location", "Barcode 128", "Status", "Notes",
+    ];
+    const YARD_EDITABLE_COLUMNS = [
+      "Unit Number", "Serial Number", "Equipment Type", "Make", "Model", "Year", "Hours", "Capacity",
+      "Tire Type", "Fuel Type", "Mast Raised", "Mast Lowered", "Attachment", "Area", "Zone", "Row",
+      "Slot", "Availability Status", "Condition Status", "Customer Hold", "Last Moved Date", "Moved By", "Notes",
+    ];
+
+    // ---------- Helpers ----------
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    async function requestJson(url, options = {}) {
+      let response;
+      try {
+        response = await fetch(url, options);
+      } catch (networkError) {
+        // fetch() itself only rejects on a network-level failure (offline,
+        // DNS, connection refused) -- worth a distinct message from "server
+        // said no", since the fix is different (check connectivity, not data).
+        throw new Error("Network error -- can't reach the server. Check your connection and try again.");
+      }
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        // A non-JSON body usually means a 500/crash page or a proxy error
+        // page, not a normal API error -- surface the HTTP status instead
+        // of letting a cryptic "Unexpected token <" SyntaxError through.
+        throw new Error(`Server returned an unexpected response (HTTP ${response.status}).`);
+      }
+
+      if (!response.ok || (!data.ok && data.error)) {
+        throw new Error(data.error || `Request failed (HTTP ${response.status}).`);
+      }
+      return data;
+    }
+
+    function logActivity(message, ok = true) {
+      const log = document.getElementById("activityLog");
+      const li = document.createElement("li");
+      const dot = document.createElement("span");
+      dot.className = "dot " + (ok ? "ok" : "fail");
+      const body = document.createElement("div");
+      const line = document.createElement("div");
+      line.textContent = message;
+      const time = document.createElement("div");
+      time.className = "time";
+      time.textContent = new Date().toLocaleTimeString();
+      body.appendChild(line);
+      body.appendChild(time);
+      li.appendChild(dot);
+      li.appendChild(body);
+      log.insertBefore(li, log.firstChild);
+    }
+
+    function setStatus(elementId, message, type = "") {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      el.textContent = message;
+      el.className = "status-line" + (type ? " " + type : "");
+    }
+
+    function markBadge(id, ready) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.toggle("ready", ready === true);
+      el.classList.toggle("failed", ready === false);
+    }
+
+    // ---------- Secure-context check ----------
+    // getUserMedia refuses to run on any origin that isn't localhost or real
+    // HTTPS -- on a plain http://<lan-ip> load (e.g. from a phone) the whole
+    // camera feature is a dead end no matter what, and the failure mode
+    // without this check is a confusing "getUserMedia is not a function"
+    // (mediaDevices is undefined entirely on an insecure origin, it's not
+    // just that the call fails). Catch it up front with a clear message
+    // instead of a cryptic error the first time Start Camera is clicked.
+    const hasCameraApi = Boolean(window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+
+    if (!hasCameraApi) {
+      document.getElementById("startCameraBtn").disabled = true;
+      setStatus(
+        "cameraStatus",
+        window.isSecureContext
+          ? "Camera access isn't available in this browser."
+          : "Camera access needs HTTPS (or localhost) -- this page was loaded over plain HTTP, so the browser blocks it. Use https://localhost or a trusted LAN HTTPS URL instead.",
+        "error"
+      );
+    }
+
+    // ---------- Library readiness ----------
+    window.addEventListener("load", () => {
+      markBadge("badge-tf", typeof tf !== "undefined");
+      markBadge("badge-cocossd", typeof cocoSsd !== "undefined");
+      markBadge("badge-zxing", typeof ZXing !== "undefined");
+
+      if (typeof tf === "undefined" || typeof cocoSsd === "undefined" || typeof ZXing === "undefined") {
+        setStatus("cameraStatus", "One or more vision libraries failed to load. Check your connection and reload.", "error");
+      }
+
+      loadRowsForTarget(currentTarget);
+    });
+
+    // Refetch rows whenever this tab regains focus/visibility, so data uploaded or
+    // edited in another tab (e.g. a bulk Parts import) is picked up without a manual reload.
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        loadRowsForTarget(currentTarget);
+      }
+    });
+
+    // ---------- Target switching ----------
+    function setTarget(target) {
+      currentTarget = target;
+      document.getElementById("targetPartsBtn").classList.toggle("active", target === "parts");
+      document.getElementById("targetYardBtn").classList.toggle("active", target === "yard");
+      document.getElementById("liveCountsPanel").style.display = target === "parts" ? "block" : "none";
+      document.getElementById("matchArea").innerHTML = "";
+      setStatus("barcodeStatus", "Point the camera at a Code 128 barcode, or type one above.");
+      lastScannedCode = "";
+      loadRowsForTarget(target);
+    }
+
+    async function loadRowsForTarget(target) {
+      setStatus("targetStatus", "Loading " + (target === "parts" ? "parts" : "yard") + " inventory rows...");
+      try {
+        if (target === "parts") {
+          const data = await requestJson("/api/parts/rows");
+          partsRows = data.rows || [];
+        } else {
+          const data = await requestJson("/api/yard/rows");
+          yardRows = data.rows || [];
+        }
+        setStatus("targetStatus", `Loaded ${target === "parts" ? partsRows.length : yardRows.length} ${target} row(s).`, "success");
+      } catch (error) {
+        setStatus("targetStatus", error.message || "Failed to load inventory rows.", "error");
+      }
+    }
+
+    // ---------- Camera ----------
+    // Phone cameras default to much higher resolutions than a coco-ssd pass
+    // over a video frame needs -- asking for "ideal" 1280x720 keeps inference
+    // fast and battery draw down without hurting barcode-read distance.
+    const CAMERA_CONSTRAINTS_PREFERRED = { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } };
+    const CAMERA_CONSTRAINTS_FALLBACK = { width: { ideal: 1280 }, height: { ideal: 720 } };
+
+    async function startCamera() {
+      if (mediaStream) return;
+
+      if (!hasCameraApi) {
+        setStatus(
+          "cameraStatus",
+          window.isSecureContext
+            ? "Camera access isn't available in this browser."
+            : "Camera access needs HTTPS (or localhost) -- this page was loaded over plain HTTP.",
+          "error"
+        );
+        return;
+      }
+
+      setStatus("cameraStatus", "Requesting camera access...");
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ video: CAMERA_CONSTRAINTS_PREFERRED, audio: false });
+      } catch (error) {
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({ video: CAMERA_CONSTRAINTS_FALLBACK, audio: false });
+        } catch (fallbackError) {
+          setStatus("cameraStatus", "Camera access denied or unavailable: " + fallbackError.message, "error");
+          return;
+        }
+      }
+
+      // If the OS/browser yanks the camera away mid-session (device sleep,
+      // another app grabbing exclusive access, permission revoked, hardware
+      // unplugged), the track fires 'ended' -- without this the UI is left
+      // showing a frozen "Camera on" state with dead buttons forever.
+      mediaStream.getVideoTracks().forEach((track) => {
+        track.addEventListener("ended", handleCameraTrackEnded);
+      });
+
+      const video = document.getElementById("video");
+      video.srcObject = mediaStream;
+      document.getElementById("cameraPlaceholder").style.display = "none";
+      document.getElementById("startCameraBtn").disabled = true;
+      document.getElementById("stopCameraBtn").disabled = false;
+      document.getElementById("snapshotBtn").disabled = false;
+
+      await video.play().catch(() => {});
+      setStatus("cameraStatus", "Camera on. Loading object detection model...");
+
+      startBarcodeScanning();
+
+      try {
+        if (!cocoModel) {
+          cocoModel = await cocoSsd.load();
+        }
+        setStatus("cameraStatus", "Object detection model ready.", "success");
+        startDetectLoop();
+      } catch (error) {
+        setStatus("cameraStatus", "Camera on, but object detection model failed to load: " + error.message, "error");
+      }
+    }
+
+    function handleCameraTrackEnded() {
+      if (!mediaStream) return; // already stopped deliberately; nothing to recover from
+      stopCamera();
+      setStatus("cameraStatus", "Camera disconnected unexpectedly (permission revoked, device slept, or another app took it). Click Start Camera to reconnect.", "error");
+    }
+
+    function stopCamera() {
+      if (detectLoopHandle) {
+        cancelAnimationFrame(detectLoopHandle);
+        detectLoopHandle = null;
+      }
+      if (zxingReader) {
+        try { zxingReader.reset(); } catch (error) { /* no-op */ }
+        zxingReader = null;
+      }
+      if (mediaStream) {
+        mediaStream.getTracks().forEach((track) => {
+          track.removeEventListener("ended", handleCameraTrackEnded);
+          track.stop();
+        });
+        mediaStream = null;
+      }
+
+      const video = document.getElementById("video");
+      video.srcObject = null;
+      document.getElementById("cameraPlaceholder").style.display = "flex";
+      document.getElementById("startCameraBtn").disabled = false;
+      document.getElementById("stopCameraBtn").disabled = true;
+      document.getElementById("snapshotBtn").disabled = true;
+
+      const overlay = document.getElementById("overlay");
+      const ctx = overlay.getContext("2d");
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+      document.getElementById("liveCountsBody").innerHTML =
+        '<tr class="empty-row"><td colspan="2">Start the camera to see live detections.</td></tr>';
+      latestClassCounts = {};
+      setStatus("cameraStatus", "Camera stopped.");
+    }
+
+    // ---------- Barcode scanning (ZXing) ----------
+    function startBarcodeScanning() {
+      if (typeof ZXing === "undefined") return;
+
+      const hints = new Map();
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.CODE_128]);
+      zxingReader = new ZXing.BrowserMultiFormatReader(hints, 400);
+
+      const video = document.getElementById("video");
+      zxingReader.decodeFromVideoElement(video, (result, error) => {
+        if (result) {
+          handleScannedCode(result.getText());
+        }
+        // NotFoundException fires continuously while no barcode is visible; ignore it.
+      }).catch((error) => {
+        setStatus("barcodeStatus", "Barcode scanner failed to start: " + error.message, "error");
+      });
+    }
+
+    function handleScannedCode(code) {
+      const trimmed = String(code || "").trim();
+      if (!trimmed) return;
+
+      const now = Date.now();
+      if (trimmed === lastScannedCode && now - lastScannedAt < SCAN_COOLDOWN_MS) {
+        return;
+      }
+
+      lastScannedCode = trimmed;
+      lastScannedAt = now;
+      setStatus("barcodeStatus", `Scanned: ${trimmed}`, "success");
+      resolveBarcode(trimmed);
+    }
+
+    function lookUpManualBarcode() {
+      const input = document.getElementById("manualBarcodeInput");
+      const value = String(input.value || "").trim();
+      if (!value) return;
+      lastScannedCode = value;
+      lastScannedAt = Date.now();
+      setStatus("barcodeStatus", `Scanned: ${value}`, "success");
+      resolveBarcode(value);
+    }
+
+    function resolveBarcode(code) {
+      if (currentTarget === "parts") {
+        resolvePartsBarcode(code);
+      } else {
+        resolveYardBarcode(code);
+      }
+    }
+
+    // ---------- Object detection (coco-ssd) ----------
+    function startDetectLoop() {
+      const video = document.getElementById("video");
+      const overlay = document.getElementById("overlay");
+
+      function loop(timestamp) {
+        if (!mediaStream) return;
+
+        if (video.videoWidth && (overlay.width !== video.videoWidth || overlay.height !== video.videoHeight)) {
+          overlay.width = video.videoWidth;
+          overlay.height = video.videoHeight;
+        }
+
+        if (currentTarget === "parts" && cocoModel && timestamp - lastDetectAt > 300) {
+          lastDetectAt = timestamp;
+          cocoModel.detect(video).then((predictions) => {
+            currentDetections = predictions;
+            drawDetections(predictions);
+            updateLiveCounts(predictions);
+          }).catch(() => {});
+        } else if (currentTarget !== "parts") {
+          const ctx = overlay.getContext("2d");
+          ctx.clearRect(0, 0, overlay.width, overlay.height);
+        }
+
+        detectLoopHandle = requestAnimationFrame(loop);
+      }
+
+      detectLoopHandle = requestAnimationFrame(loop);
+    }
+
+    function drawDetections(predictions) {
+      const overlay = document.getElementById("overlay");
+      const ctx = overlay.getContext("2d");
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+      ctx.lineWidth = 2;
+      ctx.font = "14px Inter, sans-serif";
+
+      predictions.forEach((prediction) => {
+        const [x, y, width, height] = prediction.bbox;
+        ctx.strokeStyle = "#1677ff";
+        ctx.strokeRect(x, y, width, height);
+        const label = `${prediction.class} (${Math.round(prediction.score * 100)}%)`;
+        const textWidth = ctx.measureText(label).width;
+        ctx.fillStyle = "rgba(22, 119, 255, 0.85)";
+        ctx.fillRect(x, Math.max(0, y - 18), textWidth + 8, 18);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(label, x + 4, Math.max(12, y - 4));
+      });
+    }
+
+    function updateLiveCounts(predictions) {
+      const counts = {};
+      predictions.forEach((prediction) => {
+        counts[prediction.class] = (counts[prediction.class] || 0) + 1;
+      });
+      latestClassCounts = counts;
+
+      const tbody = document.getElementById("liveCountsBody");
+      const classNames = Object.keys(counts).sort();
+
+      if (!classNames.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="2">No objects detected right now.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = classNames.map((className) => `
+        <tr><td>${escapeHtml(className)}</td><td>${counts[className]}</td></tr>
+      `).join("");
+    }
+
+    // ---------- Parts: barcode match ----------
+    function findPartByBarcode(code) {
+      const normalized = String(code || "").trim().toLowerCase();
+      return partsRows.find((row) => String(row["Barcode 128"] || "").trim().toLowerCase() === normalized);
+    }
+
+    function resolvePartsBarcode(code) {
+      const row = findPartByBarcode(code);
+      if (!row) {
+        renderNoPartMatch(code);
+        return;
+      }
+      renderPartMatch(row);
+      captureTrainingPhotoForPart(row);
+    }
+
+    function renderPartMatch(row) {
+      const area = document.getElementById("matchArea");
+      area.innerHTML = `
+        <div class="match-card">
+          <div><span class="code">${escapeHtml(row["Barcode 128"])}</span></div>
+          <div class="kv-grid">
+            <div class="k">Part Number</div><div class="v">${escapeHtml(row["Part Number"])}</div>
+            <div class="k">Part Name</div><div class="v">${escapeHtml(row["Part Name"])}</div>
+            <div class="k">Category</div><div class="v">${escapeHtml(row["Category"])}</div>
+            <div class="k">Primary Location</div><div class="v">${escapeHtml(row["Primary Location"] || "—")}</div>
+            <div class="k">Quantity On Hand</div><div class="v" id="partCurrentQty">${escapeHtml(row["Quantity On Hand"])}</div>
+            <div class="k">Status</div><div class="v">${escapeHtml(row["Status"])}</div>
+            <div class="k">Training Photos</div><div class="v" id="partTrainingCount">…</div>
+          </div>
+
+          <div class="qty-row">
+            <div class="field">
+              <label for="partQtyMode">Mode</label>
+              <select id="partQtyMode">
+                <option value="add">Add to Quantity</option>
+                <option value="set">Set Quantity</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="partQtyValue">Value</label>
+              <input id="partQtyValue" type="number" min="0" step="1" value="1" />
+            </div>
+            <button class="primary" onclick="applyPartQuantity(${row.__excelRowNumber})">Apply</button>
+          </div>
+        </div>
+      `;
+    }
+
+    // ---------- Vision training data capture ----------
+    // Every confirmed barcode match doubles as a labeled training photo for that
+    // Part Number, so normal scanning sessions build a classifier dataset for free.
+    function buildTrainingCaptureDataUrl() {
+      const video = document.getElementById("video");
+      if (!video || !video.videoWidth) return null;
+
+      let sx = 0;
+      let sy = 0;
+      let sw = video.videoWidth;
+      let sh = video.videoHeight;
+
+      // Prefer a tight crop around the largest current coco-ssd detection (if any)
+      // over the full frame, since that's closer to what a per-box classifier will see later.
+      if (currentDetections && currentDetections.length) {
+        const largest = currentDetections.reduce((best, prediction) => {
+          const area = prediction.bbox[2] * prediction.bbox[3];
+          return !best || area > best.area ? { prediction, area } : best;
+        }, null);
+
+        if (largest) {
+          const [x, y, w, h] = largest.prediction.bbox;
+          const padX = w * 0.15;
+          const padY = h * 0.15;
+          sx = Math.max(0, x - padX);
+          sy = Math.max(0, y - padY);
+          sw = Math.min(video.videoWidth - sx, w + padX * 2);
+          sh = Math.min(video.videoHeight - sy, h + padY * 2);
+        }
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = sw;
+      canvas.height = sh;
+      canvas.getContext("2d").drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+
+      return canvas.toDataURL("image/jpeg", 0.85);
+    }
+
+    function setTrainingCountDisplay(count) {
+      const el = document.getElementById("partTrainingCount");
+      if (el) el.textContent = count;
+    }
+
+    async function refreshTrainingCountDisplay(partNumber) {
+      try {
+        const data = await requestJson(`/api/vision/training-counts?partNumber=${encodeURIComponent(partNumber)}`);
+        setTrainingCountDisplay(data.count);
+      } catch (error) {
+        setTrainingCountDisplay("—");
+      }
+    }
+
+    async function captureTrainingPhotoForPart(row) {
+      const dataUrl = buildTrainingCaptureDataUrl();
+
+      if (!dataUrl) {
+        refreshTrainingCountDisplay(row["Part Number"]);
+        return;
+      }
+
+      try {
+        const data = await requestJson("/api/vision/capture", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            partNumber: row["Part Number"],
+            imageDataUrl: dataUrl,
+            source: "barcode",
+          }),
+        });
+
+        setTrainingCountDisplay(data.count);
+        logActivity(`Captured training photo for ${row["Part Number"]} (${data.count} total).`, true);
+      } catch (error) {
+        logActivity(`Training photo capture failed for ${row["Part Number"]}: ${error.message}`, false);
+        refreshTrainingCountDisplay(row["Part Number"]);
+      }
+    }
+
+    function renderNoPartMatch(code) {
+      const area = document.getElementById("matchArea");
+      area.innerHTML = `
+        <div class="no-match">
+          No part matches barcode <span class="code">${escapeHtml(code)}</span>.
+          <div class="btn-row">
+            <button class="secondary" onclick="handOffToAddForm('parts', '${escapeHtml(code).replace(/'/g, "&#39;")}')">Add as New Part →</button>
+          </div>
+        </div>
+      `;
+    }
+
+    async function applyPartQuantity(excelRowNumber) {
+      const row = partsRows.find((r) => r.__excelRowNumber === excelRowNumber);
+      if (!row) {
+        setStatus("barcodeStatus", "That part row is no longer available. Rescan or refresh.", "error");
+        return;
+      }
+
+      const mode = document.getElementById("partQtyMode").value;
+      const value = Number(document.getElementById("partQtyValue").value);
+
+      if (!Number.isFinite(value) || value < 0) {
+        setStatus("barcodeStatus", "Enter a quantity of 0 or higher.", "error");
+        return;
+      }
+
+      const currentQty = Number(row["Quantity On Hand"]) || 0;
+      const newQty = mode === "add" ? currentQty + value : value;
+
+      const updatedRow = {};
+      PARTS_EDITABLE_COLUMNS.forEach((column) => {
+        updatedRow[column] = row[column];
+      });
+      updatedRow["Quantity On Hand"] = newQty;
+
+      try {
+        await requestJson("/api/parts/update-row", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ excelRowNumber, row: updatedRow }),
+        });
+
+        row["Quantity On Hand"] = newQty;
+        const qtyEl = document.getElementById("partCurrentQty");
+        if (qtyEl) qtyEl.textContent = newQty;
+
+        logActivity(`Updated ${row["Part Number"]} (${row["Part Name"]}) to Quantity On Hand = ${newQty}.`, true);
+        setStatus("barcodeStatus", `${row["Part Number"]} updated to ${newQty} on hand.`, "success");
+      } catch (error) {
+        logActivity(`Failed to update ${row["Part Number"]}: ${error.message}`, false);
+        setStatus("barcodeStatus", error.message || "Failed to update part.", "error");
+      }
+    }
+
+    // ---------- Yard: barcode match ----------
+    function findYardByBarcode(code) {
+      const normalized = String(code || "").trim().toLowerCase();
+      return yardRows.find((row) =>
+        String(row["Unit Number"] || "").trim().toLowerCase() === normalized ||
+        String(row["Serial Number"] || "").trim().toLowerCase() === normalized
+      );
+    }
+
+    function resolveYardBarcode(code) {
+      const row = findYardByBarcode(code);
+      if (!row) {
+        renderNoYardMatch(code);
+        return;
+      }
+      renderYardMatch(row);
+    }
+
+    function yardZoneOptions(area, selected) {
+      const zones = YARD_ZONE_VALUES_BY_AREA[area] || [];
+      return zones.map((zone) => `<option value="${escapeHtml(zone)}" ${zone === selected ? "selected" : ""}>${escapeHtml(zone)}</option>`).join("");
+    }
+
+    function selectOptions(values, selected) {
+      return values.map((value) => `<option value="${escapeHtml(value)}" ${value === selected ? "selected" : ""}>${escapeHtml(value)}</option>`).join("");
+    }
+
+    function renderYardMatch(row) {
+      const area = document.getElementById("matchArea");
+      const currentArea = row["Area"] || "Yard";
+      area.innerHTML = `
+        <div class="match-card">
+          <div><span class="code">${escapeHtml(row["Unit Number"] || row["Serial Number"])}</span></div>
+          <div class="kv-grid">
+            <div class="k">Unit Number</div><div class="v">${escapeHtml(row["Unit Number"] || "—")}</div>
+            <div class="k">Serial Number</div><div class="v">${escapeHtml(row["Serial Number"] || "—")}</div>
+            <div class="k">Equipment Type</div><div class="v">${escapeHtml(row["Equipment Type"])}</div>
+            <div class="k">Make / Model</div><div class="v">${escapeHtml(row["Make"])} ${escapeHtml(row["Model"])}</div>
+          </div>
+
+          <div class="field-grid">
+            <div class="field">
+              <label for="yardAreaEdit">Area</label>
+              <select id="yardAreaEdit" onchange="syncYardEditZoneOptions()">
+                ${selectOptions(Object.keys(YARD_ZONE_VALUES_BY_AREA), currentArea)}
+              </select>
+            </div>
+            <div class="field">
+              <label for="yardZoneEdit">Zone</label>
+              <select id="yardZoneEdit">${yardZoneOptions(currentArea, row["Zone"])}</select>
+            </div>
+            <div class="field">
+              <label for="yardRowEdit">Row</label>
+              <input id="yardRowEdit" type="text" value="${escapeHtml(row["Row"])}" />
+            </div>
+            <div class="field">
+              <label for="yardSlotEdit">Slot</label>
+              <input id="yardSlotEdit" type="text" value="${escapeHtml(row["Slot"])}" />
+            </div>
+            <div class="field">
+              <label for="yardAvailabilityEdit">Availability Status</label>
+              <select id="yardAvailabilityEdit">${selectOptions(YARD_AVAILABILITY_VALUES, row["Availability Status"])}</select>
+            </div>
+            <div class="field">
+              <label for="yardConditionEdit">Condition Status</label>
+              <select id="yardConditionEdit">${selectOptions(YARD_CONDITION_VALUES, row["Condition Status"])}</select>
+            </div>
+            <div class="field">
+              <label for="yardCustomerHoldEdit">Customer Hold</label>
+              <select id="yardCustomerHoldEdit">${selectOptions(YARD_CUSTOMER_HOLD_VALUES, row["Customer Hold"])}</select>
+            </div>
+            <div class="field">
+              <label for="yardMovedByEdit">Moved By</label>
+              <input id="yardMovedByEdit" type="text" value="${escapeHtml(row["Moved By"])}" />
+            </div>
+            <div class="field wide">
+              <label for="yardNotesEdit">Notes</label>
+              <input id="yardNotesEdit" type="text" value="${escapeHtml(row["Notes"])}" />
+            </div>
+          </div>
+
+          <div class="btn-row">
+            <button class="primary" onclick="applyYardUpdate(${row.__excelRowNumber})">Update Placement</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function syncYardEditZoneOptions() {
+      const areaSelect = document.getElementById("yardAreaEdit");
+      const zoneSelect = document.getElementById("yardZoneEdit");
+      if (!areaSelect || !zoneSelect) return;
+      zoneSelect.innerHTML = yardZoneOptions(areaSelect.value, "");
+    }
+
+    function renderNoYardMatch(code) {
+      const area = document.getElementById("matchArea");
+      area.innerHTML = `
+        <div class="no-match">
+          No placement matches Unit Number or Serial Number <span class="code">${escapeHtml(code)}</span>.
+          <div class="btn-row">
+            <button class="secondary" onclick="handOffToAddForm('yard', '${escapeHtml(code).replace(/'/g, "&#39;")}')">Add as New Equipment Placement →</button>
+          </div>
+        </div>
+      `;
+    }
+
+    async function applyYardUpdate(excelRowNumber) {
+      const row = yardRows.find((r) => r.__excelRowNumber === excelRowNumber);
+      if (!row) {
+        setStatus("barcodeStatus", "That placement row is no longer available. Rescan or refresh.", "error");
+        return;
+      }
+
+      const updatedRow = {};
+      YARD_EDITABLE_COLUMNS.forEach((column) => {
+        updatedRow[column] = row[column];
+      });
+
+      updatedRow["Area"] = document.getElementById("yardAreaEdit").value;
+      updatedRow["Zone"] = document.getElementById("yardZoneEdit").value;
+      updatedRow["Row"] = document.getElementById("yardRowEdit").value;
+      updatedRow["Slot"] = document.getElementById("yardSlotEdit").value;
+      updatedRow["Availability Status"] = document.getElementById("yardAvailabilityEdit").value;
+      updatedRow["Condition Status"] = document.getElementById("yardConditionEdit").value;
+      updatedRow["Customer Hold"] = document.getElementById("yardCustomerHoldEdit").value;
+      updatedRow["Moved By"] = document.getElementById("yardMovedByEdit").value;
+      updatedRow["Notes"] = document.getElementById("yardNotesEdit").value;
+
+      try {
+        const data = await requestJson("/api/yard/update-row", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ excelRowNumber, row: updatedRow }),
+        });
+
+        Object.assign(row, data.result?.row || updatedRow);
+        logActivity(`Updated placement ${row["Unit Number"] || row["Serial Number"]}.`, true);
+        setStatus("barcodeStatus", "Placement updated.", "success");
+        renderYardMatch(row);
+      } catch (error) {
+        logActivity(`Failed to update placement: ${error.message}`, false);
+        setStatus("barcodeStatus", error.message || "Failed to update placement.", "error");
+      }
+    }
+
+    // ---------- Hand-off to Add form on index.html ----------
+    function handOffToAddForm(target, code) {
+      sessionStorage.setItem("visionHandoff", JSON.stringify({ target, barcode: code }));
+      window.location.href = "/index.html";
+    }
+
+    // ---------- Snapshot & object counting ----------
+    function captureSnapshot() {
+      if (currentTarget !== "parts") {
+        setStatus("cameraStatus", "Object counting only applies to Parts Inventory.", "error");
+        return;
+      }
+
+      const classNames = Object.keys(latestClassCounts).sort();
+      const area = document.getElementById("snapshotArea");
+
+      if (!classNames.length) {
+        area.innerHTML = '<div class="status-line">No objects were detected in the current frame.</div>';
+        return;
+      }
+
+      const partOptions = partsRows.map((row) => `<option value="${escapeHtml(row["Part Number"])}">${escapeHtml(row["Part Name"])}</option>`).join("");
+
+      area.innerHTML = `
+        <datalist id="snapshotPartOptions">${partOptions}</datalist>
+        <div class="snapshot-header">
+          <div>Class</div><div>Count</div><div>Part Number</div><div>Mode</div><div>Qty</div><div></div>
+        </div>
+        ${classNames.map((className, index) => `
+          <div class="snapshot-row" id="snapshotRow-${index}">
+            <div>${escapeHtml(className)}</div>
+            <div>${latestClassCounts[className]}</div>
+            <input list="snapshotPartOptions" placeholder="Part Number" id="snapshotPart-${index}" />
+            <select id="snapshotMode-${index}">
+              <option value="add">Add</option>
+              <option value="set">Set</option>
+            </select>
+            <input type="number" min="0" step="1" value="${latestClassCounts[className]}" id="snapshotQty-${index}" />
+            <button class="secondary" onclick="applySnapshotRow(${index})">Apply</button>
+          </div>
+        `).join("")}
+      `;
+    }
+
+    async function applySnapshotRow(index) {
+      const partNumberInput = document.getElementById(`snapshotPart-${index}`);
+      const modeSelect = document.getElementById(`snapshotMode-${index}`);
+      const qtyInput = document.getElementById(`snapshotQty-${index}`);
+
+      const partNumber = String(partNumberInput.value || "").trim();
+      if (!partNumber) {
+        setStatus("cameraStatus", "Enter or pick a Part Number for that row before applying.", "error");
+        return;
+      }
+
+      const row = partsRows.find((r) => String(r["Part Number"] || "").trim().toLowerCase() === partNumber.toLowerCase());
+      if (!row) {
+        setStatus("cameraStatus", `No part found with Part Number "${partNumber}".`, "error");
+        return;
+      }
+
+      const mode = modeSelect.value;
+      const value = Number(qtyInput.value);
+      if (!Number.isFinite(value) || value < 0) {
+        setStatus("cameraStatus", "Enter a quantity of 0 or higher.", "error");
+        return;
+      }
+
+      const currentQty = Number(row["Quantity On Hand"]) || 0;
+      const newQty = mode === "add" ? currentQty + value : value;
+
+      const updatedRow = {};
+      PARTS_EDITABLE_COLUMNS.forEach((column) => {
+        updatedRow[column] = row[column];
+      });
+      updatedRow["Quantity On Hand"] = newQty;
+
+      try {
+        await requestJson("/api/parts/update-row", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ excelRowNumber: row.__excelRowNumber, row: updatedRow }),
+        });
+
+        row["Quantity On Hand"] = newQty;
+        logActivity(`Snapshot count applied: ${row["Part Number"]} (${row["Part Name"]}) → Quantity On Hand = ${newQty}.`, true);
+        setStatus("cameraStatus", `${row["Part Number"]} updated to ${newQty} on hand.`, "success");
+      } catch (error) {
+        logActivity(`Failed to apply snapshot row for "${partNumber}": ${error.message}`, false);
+        setStatus("cameraStatus", error.message || "Failed to apply snapshot row.", "error");
+      }
+    }
+
+    window.addEventListener("beforeunload", () => {
+      stopCamera();
+    });
+  </script>
+</body>
+</html>

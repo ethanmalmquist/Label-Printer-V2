@@ -2013,6 +2013,51 @@
       }
     }
   </style>
+
+  <!-- FleeetX chat widget: floating launcher, present on every app page (SPA-wide, outside #app-page containers) -->
+  <style>
+    #fx-launcher {
+      position: fixed; right: 24px; bottom: 24px; width: 58px; height: 58px; border-radius: 50%;
+      background: #1C1F22; border: none; cursor: pointer; display: flex; align-items: center;
+      justify-content: center; box-shadow: 0 8px 24px rgba(0,0,0,.3); z-index: 2000;
+      transition: transform .12s ease;
+    }
+    #fx-launcher:hover { transform: scale(1.05); }
+    #fx-launcher svg { width: 26px; height: 26px; }
+    #fx-launcher-badge {
+      position: absolute; top: -2px; right: -2px; width: 14px; height: 14px; border-radius: 50%;
+      background: #F2B705; border: 2px solid #F2F0EA;
+    }
+    #fx-panel {
+      position: fixed; right: 24px; bottom: 96px; width: 420px; max-width: calc(100vw - 32px);
+      height: 680px; max-height: calc(100vh - 120px); background: #F2F0EA; border-radius: 16px;
+      border: 1px solid #DCD8CC; box-shadow: 0 20px 60px rgba(0,0,0,.25); overflow: hidden;
+      display: flex; flex-direction: column; z-index: 1999;
+      opacity: 0; transform: translateY(16px) scale(.98); pointer-events: none;
+      transition: opacity .18s ease, transform .18s ease;
+      font-family: 'Inter', system-ui, sans-serif; color: #1C1F22;
+    }
+    #fx-panel.fx-open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+    .fx-panel-header {
+      background: #1C1F22; color: #fff; padding: 12px 14px; display: flex; align-items: center;
+      justify-content: space-between; flex-shrink: 0;
+    }
+    .fx-panel-title { font-family: 'Oswald', 'Inter', system-ui, sans-serif; font-size: 14px; font-weight: 600; }
+    .fx-back-btn { background: none; border: none; color: #fff; cursor: pointer; font-size: 12px;
+      display: flex; align-items: center; gap: 4px; opacity: .85; }
+    .fx-back-btn:hover { opacity: 1; }
+    .fx-close-btn { background: none; border: none; color: #fff; cursor: pointer; font-size: 18px; line-height: 1; opacity: .85; }
+    .fx-close-btn:hover { opacity: 1; }
+    .fx-picker { flex: 1; overflow-y: auto; padding: 18px 16px; display: flex; flex-direction: column; gap: 10px; }
+    .fx-picker-intro { font-size: 12.5px; color: #4B555F; line-height: 1.5; margin-bottom: 4px; }
+    .fx-option { background: #fff; border: 1.5px solid #DCD8CC; border-radius: 10px; padding: 13px 14px;
+      cursor: pointer; text-align: left; transition: border-color .12s; }
+    .fx-option:hover { border-color: #1C1F22; }
+    .fx-option-title { font-family: 'Oswald', 'Inter', system-ui, sans-serif; font-weight: 600; font-size: 14px; margin-bottom: 2px; }
+    .fx-option-desc { font-size: 11.5px; color: #4B555F; line-height: 1.4; }
+    .fx-option.fx-warn .fx-option-title { color: #A8432F; }
+    #fx-panel iframe { flex: 1; border: none; width: 100%; }
+  </style>
 </head>
 
 <body>
@@ -2061,6 +2106,16 @@
         <a id="yardInventoryNav" class="nav-item" href="#" onclick="showAppPage('yardInventory'); return false;">
           <span class="nav-icon">□</span>
           <span>Yard Inventory</span>
+        </a>
+
+        <a class="nav-item" href="/vision.html">
+          <span class="nav-icon">◎</span>
+          <span>Vision Scanner</span>
+        </a>
+
+        <a class="nav-item" href="/crm">
+          <span class="nav-icon">▣</span>
+          <span>CRM</span>
         </a>
 
         <div class="nav-section-title">Profile & Settings</div>
@@ -2530,7 +2585,7 @@
 
                     <div class="excel-field">
                       <label for="partLocationInput">Primary Location</label>
-                      <input id="partLocationInput" type="text" placeholder="Example: A010101" />
+                      <input id="partLocationInput" type="text" placeholder="Example: A/01/01/01 or A/1/1/1" />
                     </div>
 
                     <div class="excel-field">
@@ -2661,6 +2716,9 @@
                       </button>
                       <button class="secondary" type="button" onclick="openBulkPartsModal()">
                         Add Bulk Parts
+                      </button>
+                      <button class="secondary" type="button" onclick="openPartsFileUploadModal()">
+                        Upload CSV/XLSX
                       </button>
                       <button id="editSelectedPartButton" class="orange" type="button" onclick="openEditSelectedPartModal()" disabled>
                         Edit Selected Row
@@ -3458,6 +3516,67 @@
   </div>
 
 
+  <div id="partsFileUploadModal" class="modal-backdrop" aria-hidden="true">
+    <div class="bulk-modal" role="dialog" aria-modal="true" aria-labelledby="partsFileUploadTitle">
+      <div class="bulk-modal-header">
+        <div>
+          <h2 id="partsFileUploadTitle">Upload CSV/XLSX</h2>
+          <p>
+            Drag and drop a completed Parts Inventory import template, or choose a .csv, .xls, or .xlsx file.
+            The file columns should match the Download Import Template format.
+          </p>
+        </div>
+
+        <button class="secondary bulk-close-button" type="button" onclick="closePartsFileUploadModal()">×</button>
+      </div>
+
+      <input
+        id="partsFileUploadInput"
+        type="file"
+        accept=".csv,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+        style="display: none;"
+        onchange="handlePartsFileInputChange(event)"
+      />
+
+      <div
+        id="partsFileDropZone"
+        class="file-upload-dropzone"
+        role="button"
+        tabindex="0"
+        onclick="openPartsFilePicker()"
+        onkeydown="handlePartsFileDropZoneKeydown(event)"
+        ondragover="handlePartsFileDragOver(event)"
+        ondragleave="handlePartsFileDragLeave(event)"
+        ondrop="handlePartsFileDrop(event)"
+      >
+        <strong>Drop CSV/XLSX file here</strong>
+        <span>Use the Parts Inventory import template. Header rows are ignored automatically.</span>
+        <span>Click this box to browse for a file.</span>
+      </div>
+
+      <div id="partsFileUploadName" class="file-upload-file-name" style="margin-top: 14px;">
+        No file selected.
+      </div>
+
+      <div id="partsFileUploadSkippedPanel" style="display: none; margin-top: 14px;">
+        <div class="excel-message error" style="margin-bottom: 8px;">
+          Some rows were skipped. Fix the issues below, or download them, correct them, and re-upload.
+        </div>
+        <ul id="partsFileUploadSkippedList" style="margin: 0 0 10px; padding-left: 18px; font-size: 12.5px; max-height: 180px; overflow-y: auto;"></ul>
+        <button class="secondary" type="button" onclick="downloadSkippedPartsRows()">Download Skipped Rows</button>
+      </div>
+
+      <div class="bulk-toolbar">
+        <div id="partsFileUploadMessage" class="bulk-message">Choose a file to upload parts.</div>
+
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+          <button class="secondary" type="button" onclick="clearPartsFileUploadSelection()">Clear File</button>
+          <button class="primary" type="button" onclick="uploadPartsImportFile()">Upload File Rows</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="yardFileUploadModal" class="modal-backdrop" aria-hidden="true">
     <div class="bulk-modal" role="dialog" aria-modal="true" aria-labelledby="yardFileUploadTitle">
       <div class="bulk-modal-header">
@@ -3616,6 +3735,8 @@
     let currentShowroomInlineAddDefaults = {};
     let parsedBulkYardRows = [];
     let selectedYardImportFile = null;
+    let selectedPartsImportFile = null;
+    let lastPartsSkippedRows = [];
     let lastPrinterConnected = false;
 
     const workflowSteps = {
@@ -6683,6 +6804,290 @@
     }
 
 
+    function setPartsFileUploadMessage(message, type = "") {
+      const messageEl = document.getElementById("partsFileUploadMessage");
+
+      if (!messageEl) {
+        return;
+      }
+
+      messageEl.textContent = message || "";
+      messageEl.className = "bulk-message";
+
+      if (type) {
+        messageEl.classList.add(type);
+      }
+    }
+
+    function openPartsFileUploadModal() {
+      const modal = document.getElementById("partsFileUploadModal");
+
+      clearPartsFileUploadSelection(false);
+
+      if (modal) {
+        modal.classList.add("open");
+        modal.setAttribute("aria-hidden", "false");
+      }
+    }
+
+    function closePartsFileUploadModal() {
+      const modal = document.getElementById("partsFileUploadModal");
+
+      if (!modal) {
+        return;
+      }
+
+      modal.classList.remove("open");
+      modal.setAttribute("aria-hidden", "true");
+    }
+
+    function openPartsFilePicker() {
+      const input = document.getElementById("partsFileUploadInput");
+
+      if (input) {
+        input.click();
+      }
+    }
+
+    function handlePartsFileDropZoneKeydown(event) {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openPartsFilePicker();
+      }
+    }
+
+    function handlePartsFileDragOver(event) {
+      event.preventDefault();
+      const dropZone = document.getElementById("partsFileDropZone");
+
+      if (dropZone) {
+        dropZone.classList.add("drag-over");
+      }
+    }
+
+    function handlePartsFileDragLeave(event) {
+      event.preventDefault();
+      const dropZone = document.getElementById("partsFileDropZone");
+
+      if (dropZone) {
+        dropZone.classList.remove("drag-over");
+      }
+    }
+
+    function handlePartsFileDrop(event) {
+      event.preventDefault();
+      const dropZone = document.getElementById("partsFileDropZone");
+
+      if (dropZone) {
+        dropZone.classList.remove("drag-over");
+      }
+
+      const file = event.dataTransfer?.files?.[0];
+      setSelectedPartsImportFile(file);
+    }
+
+    function handlePartsFileInputChange(event) {
+      const file = event.target?.files?.[0];
+      setSelectedPartsImportFile(file);
+    }
+
+    function setSelectedPartsImportFile(file) {
+      const fileNameEl = document.getElementById("partsFileUploadName");
+
+      if (!file) {
+        selectedPartsImportFile = null;
+
+        if (fileNameEl) {
+          fileNameEl.textContent = "No file selected.";
+        }
+
+        setPartsFileUploadMessage("Choose a file to upload parts.");
+        return;
+      }
+
+      const fileName = String(file.name || "");
+      const validExtension = /\.(csv|xls|xlsx)$/i.test(fileName);
+
+      if (!validExtension) {
+        selectedPartsImportFile = null;
+
+        if (fileNameEl) {
+          fileNameEl.textContent = "No file selected.";
+        }
+
+        setPartsFileUploadMessage("Upload a .csv, .xls, or .xlsx file that uses the Parts Inventory import template.", "error");
+        return;
+      }
+
+      selectedPartsImportFile = file;
+
+      if (fileNameEl) {
+        fileNameEl.textContent = `${file.name} (${Math.max(1, Math.round(file.size / 1024))} KB)`;
+      }
+
+      setPartsFileUploadMessage("File selected. Click Upload File Rows to add these parts.", "success");
+    }
+
+    function clearPartsFileUploadSelection(showMessage = true) {
+      selectedPartsImportFile = null;
+
+      const input = document.getElementById("partsFileUploadInput");
+      const fileNameEl = document.getElementById("partsFileUploadName");
+      const dropZone = document.getElementById("partsFileDropZone");
+
+      if (input) {
+        input.value = "";
+      }
+
+      if (fileNameEl) {
+        fileNameEl.textContent = "No file selected.";
+      }
+
+      if (dropZone) {
+        dropZone.classList.remove("drag-over");
+      }
+
+      lastPartsSkippedRows = [];
+      renderPartsFileUploadSkippedRows([]);
+
+      if (showMessage) {
+        setPartsFileUploadMessage("File selection cleared.");
+      } else {
+        setPartsFileUploadMessage("Choose a file to upload parts.");
+      }
+    }
+
+    async function uploadPartsImportFile() {
+      if (!selectedPartsImportFile) {
+        setPartsFileUploadMessage("Choose or drop a CSV/XLSX file before uploading.", "error");
+        return;
+      }
+
+      const confirmed = confirm(
+        `Upload parts from ${selectedPartsImportFile.name}?\n\n` +
+          "This will append valid rows to data/parts-inventory.xlsx. Part ID, Date Created, and Last Updated will be generated."
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      setPartsFileUploadMessage("Uploading file rows...", "");
+      setPartsInventoryMessage("Uploading Parts Inventory file...", "");
+
+      try {
+        const buffer = await selectedPartsImportFile.arrayBuffer();
+        const response = await fetch("/api/parts/upload-import", {
+          method: "POST",
+          headers: {
+            "Content-Type": selectedPartsImportFile.type || "application/octet-stream",
+            "X-File-Name": encodeURIComponent(selectedPartsImportFile.name),
+          },
+          body: buffer,
+        });
+        const data = await response.json();
+
+        if (!data.ok) {
+          throw new Error(data.error || "File upload failed.");
+        }
+
+        const skippedRows = Array.isArray(data.result.skippedRows) ? data.result.skippedRows : [];
+        lastPartsSkippedRows = skippedRows;
+        renderPartsFileUploadSkippedRows(skippedRows);
+
+        setPartsFileUploadMessage(
+          skippedRows.length
+            ? `Uploaded ${data.result.uploadedRowCount} row(s). Skipped ${skippedRows.length} row(s) — see details below.`
+            : `Uploaded ${data.result.uploadedRowCount} row(s). No rows were skipped.`,
+          skippedRows.length ? "error" : "success"
+        );
+        setPartsInventoryMessage(
+          `File upload complete. Uploaded ${data.result.uploadedRowCount} part row(s), skipped ${skippedRows.length}.`,
+          skippedRows.length ? "error" : "success"
+        );
+        setOutput(
+          `Parts Inventory file upload complete.\n` +
+            `File: ${data.fileName || selectedPartsImportFile.name}\n` +
+            `Parsed rows: ${data.parsedRowCount || 0}\n` +
+            `Uploaded: ${data.result.uploadedRowCount} row(s)\n` +
+            `Skipped: ${skippedRows.length} row(s)\n` +
+            `Backup: ${data.result.backupFile || "created"}`
+        );
+
+        await loadPartsInventoryRows();
+
+        if (skippedRows.length) {
+          // Leave the modal + file selection in place so the user can review and download
+          // the skipped rows before deciding whether to clear or retry.
+        } else {
+          clearPartsFileUploadSelection(false);
+          closePartsFileUploadModal();
+        }
+      } catch (error) {
+        setPartsFileUploadMessage(error.message || "File upload failed.", "error");
+        setPartsInventoryMessage(error.message || "File upload failed.", "error");
+        setOutput(error.message || "File upload failed.");
+      }
+    }
+
+    function renderPartsFileUploadSkippedRows(skippedRows) {
+      const panel = document.getElementById("partsFileUploadSkippedPanel");
+      const list = document.getElementById("partsFileUploadSkippedList");
+
+      if (!panel || !list) {
+        return;
+      }
+
+      if (!skippedRows.length) {
+        panel.style.display = "none";
+        list.innerHTML = "";
+        return;
+      }
+
+      list.innerHTML = skippedRows
+        .map((entry) => {
+          const label = entry.row?.["Part Number"] || entry.row?.["Part Name"] || "";
+          return `<li>Row ${entry.sourceRowNumber}${label ? ` (${escapeHtml(label)})` : ""}: ${escapeHtml(entry.error)}</li>`;
+        })
+        .join("");
+
+      panel.style.display = "block";
+    }
+
+    async function downloadSkippedPartsRows() {
+      if (!lastPartsSkippedRows.length) {
+        setPartsFileUploadMessage("No skipped rows to download.", "error");
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/parts/export-skipped-rows", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ skippedRows: lastPartsSkippedRows }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || "Failed to export skipped rows.");
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "parts-inventory-skipped-rows.xlsx";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        setPartsFileUploadMessage(error.message || "Failed to export skipped rows.", "error");
+      }
+    }
+
     function setYardFileUploadMessage(message, type = "") {
       const messageEl = document.getElementById("yardFileUploadMessage");
 
@@ -9147,8 +9552,121 @@
       }
     }
 
+    function applyVisionHandoff() {
+      const raw = sessionStorage.getItem("visionHandoff");
+      if (!raw) return;
+
+      sessionStorage.removeItem("visionHandoff");
+
+      let handoff;
+      try {
+        handoff = JSON.parse(raw);
+      } catch (error) {
+        return;
+      }
+
+      if (handoff.target === "parts") {
+        showAppPage("partsInventory");
+        const input = document.getElementById("partBarcodeInput");
+        if (input) {
+          input.value = handoff.barcode || "";
+          input.focus();
+        }
+        setPartsInventoryMessage(
+          `Scanned barcode "${handoff.barcode}" pre-filled below — fill in the rest and click Add Part.`,
+          ""
+        );
+      } else if (handoff.target === "yard") {
+        showAppPage("yardInventory");
+        const input = document.getElementById("yardUnitNumberInput");
+        if (input) {
+          input.value = handoff.barcode || "";
+          input.focus();
+        }
+        setYardInventoryMessage(
+          `Scanned code "${handoff.barcode}" pre-filled below — fill in the rest and click Add Equipment Placement.`,
+          ""
+        );
+      }
+    }
+
     loadExcelDataFields();
     loadPrintHistory();
+    applyVisionHandoff();
+  </script>
+
+  <!-- FleeetX chat widget: bottom-right hovering launcher + picker panel, present across every page of this SPA -->
+  <div id="fx-panel">
+    <div class="fx-panel-header">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button class="fx-back-btn" id="fx-backBtn" onclick="fxShowPicker()" style="display:none;">&larr; Back</button>
+        <span class="fx-panel-title" id="fx-panelTitle">FleeetX Rental Desk</span>
+      </div>
+      <button class="fx-close-btn" onclick="fxClosePanel()">&times;</button>
+    </div>
+    <div class="fx-picker" id="fx-picker">
+      <div class="fx-picker-intro">Pick a version to try:</div>
+      <div class="fx-option" onclick="fxLoadDemo('chat-demo/scripted-demo.html', 'Scripted Demo')">
+        <div class="fx-option-title">Scripted Demo</div>
+        <div class="fx-option-desc">No API calls, instant, works offline.</div>
+      </div>
+      <div class="fx-option" onclick="fxLoadDemo('chat-demo/xai-agent.html', 'Grok Agent')">
+        <div class="fx-option-title">Grok (xAI) Agent</div>
+        <div class="fx-option-desc">Real model, real tool calls — paste in your own xAI key.</div>
+      </div>
+      <div class="fx-option fx-warn" onclick="fxLoadDemo('chat-demo/claude-agent.html', 'Claude Agent')">
+        <div class="fx-option-title">Claude Agent (reference only)</div>
+        <div class="fx-option-desc">Won't function outside a Claude.ai artifact — loads with its own warning.</div>
+      </div>
+    </div>
+  </div>
+
+  <button id="fx-launcher" onclick="fxTogglePanel()" aria-label="Open chat">
+    <span id="fx-launcher-badge"></span>
+    <svg id="fx-launcher-icon" viewBox="0 0 24 24" fill="none">
+      <path d="M4 4h16v12H8l-4 4V4z" stroke="#F2B705" stroke-width="2" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <script>
+    // Pure presentation/lazy-loading wrapper, kept isolated from the app's own scripts via fx- prefixing.
+    // Does not modify chat-demo's HTML files in any way; each loads unmodified inside an iframe, only
+    // once explicitly picked, so nothing (including any API-backed agent) starts running until opened.
+    let fxPanelOpen = false;
+
+    function fxTogglePanel() {
+      fxPanelOpen = !fxPanelOpen;
+      document.getElementById('fx-panel').classList.toggle('fx-open', fxPanelOpen);
+      document.getElementById('fx-launcher-badge').style.display = fxPanelOpen ? 'none' : 'block';
+      document.getElementById('fx-launcher-icon').innerHTML = fxPanelOpen
+        ? '<path d="M6 6L18 18M18 6L6 18" stroke="#F2B705" stroke-width="2.4" stroke-linecap="round"/>'
+        : '<path d="M4 4h16v12H8l-4 4V4z" stroke="#F2B705" stroke-width="2" stroke-linejoin="round"/>';
+      if (!fxPanelOpen) fxShowPicker(); // reset to picker next time it's reopened
+    }
+    function fxClosePanel() {
+      fxPanelOpen = false;
+      document.getElementById('fx-panel').classList.remove('fx-open');
+      document.getElementById('fx-launcher-badge').style.display = 'block';
+      document.getElementById('fx-launcher-icon').innerHTML = '<path d="M4 4h16v12H8l-4 4V4z" stroke="#F2B705" stroke-width="2" stroke-linejoin="round"/>';
+    }
+    function fxLoadDemo(file, title) {
+      document.getElementById('fx-picker').style.display = 'none';
+      document.getElementById('fx-backBtn').style.display = 'flex';
+      document.getElementById('fx-panelTitle').textContent = title;
+      let existing = document.getElementById('fx-demoFrame');
+      if (existing) existing.remove();
+      const iframe = document.createElement('iframe');
+      iframe.id = 'fx-demoFrame';
+      iframe.src = file;
+      document.getElementById('fx-panel').appendChild(iframe);
+    }
+    function fxShowPicker() {
+      const frame = document.getElementById('fx-demoFrame');
+      if (frame) frame.remove();
+      document.getElementById('fx-picker').style.display = 'flex';
+      document.getElementById('fx-backBtn').style.display = 'none';
+      document.getElementById('fx-panelTitle').textContent = 'FleeetX Rental Desk';
+    }
   </script>
 </body>
 </html>

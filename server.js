@@ -2,10 +2,8 @@
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
-const https = require("https");
 const PDFDocument = require("pdfkit");
 const XLSX = require("xlsx");
-const { createProxyMiddleware } = require("http-proxy-middleware");
 const { printer } = require("./config");
 const printerClient = require("./lib/printer");
 
@@ -24,36 +22,42 @@ let printJobHistory = [];
 const MAX_PRINT_HISTORY_ITEMS = 25;
 const FIXED_COMPANY_NAME = "Bulldog Forklifts";
 const PRODUCT_BARCODE_LENGTH = 12;
-
-// CRM platform runs as its own NestJS process (default http://localhost:3100).
-// This proxies /crm/* through to it, stripping the prefix, so the whole thing
-// is reachable from one site (this server's origin) without any CORS setup.
-const CRM_TARGET = process.env.CRM_TARGET || "http://localhost:3100";
-app.use(
-  "/crm",
-  createProxyMiddleware({
-    target: CRM_TARGET,
-    changeOrigin: true,
-    pathRewrite: { "^/crm": "" },
-    on: {
-      error: (err, req, res) => {
-        console.error("CRM proxy error:", err.message);
-        res.writeHead(502, { "Content-Type": "text/plain" });
-        res.end(`CRM platform is not reachable at ${CRM_TARGET}. Is it running (npm start in crm-platform)?`);
-      },
-    },
-  })
-);
+const BACKUP_LOCK_ERROR_CODES = new Set(["EPERM", "EACCES", "EBUSY", "ETXTBSY"]);
+const MAX_BACKUP_COPY_ATTEMPTS = 10;
+const PILOT_PRINTER_APPROVAL_HEADER = "X-Pilot-Printer-Approval";
+const PHYSICAL_PRINTER_GUARD_STATUS = 423;
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
+class ClientInputError extends Error {
+  constructor(message, statusCode = 400) {
+    super(message);
+    this.name = "ClientInputError";
+    this.statusCode = statusCode;
+  }
+}
+
+function sendJsonError(res, error) {
+  const statusCode =
+    Number.isInteger(error?.statusCode) &&
+    error.statusCode >= 400 &&
+    error.statusCode < 500
+      ? error.statusCode
+      : 500;
+
+  res.status(statusCode).json({
+    ok: false,
+    error: error.message,
+  });
+}
+
 function getLabelModule(type) {
   const mod = labelModules[type];
 
   if (!mod) {
-    throw new Error(
+    throw new ClientInputError(
       `Unknown label type: ${type}. Use product, location, or equipment.`
     );
   }
@@ -63,6 +67,67 @@ function getLabelModule(type) {
 
 function getMode(req) {
   return req.body?.mode || req.query?.mode || "test";
+}
+
+function getPilotPrinterApprovalPhrase(action) {
+  return `APPROVE ${action} ${getPrinterHost()}:${getPrinterPort()}`;
+}
+
+function getPilotPrinterApproval(req) {
+  return String(
+    req.body?.pilotPrinterApproval ||
+      req.get(PILOT_PRINTER_APPROVAL_HEADER) ||
+      ""
+  ).trim();
+}
+
+function assertPilotPrinterActionApproved(req, action) {
+  const expectedApproval = getPilotPrinterApprovalPhrase(action);
+
+  if (getPilotPrinterApproval(req) !== expectedApproval) {
+    throw new ClientInputError(
+      `Physical printer route blocked by pilot safety guard. This endpoint can send commands to ${getPrinterHost()}:${getPrinterPort()}. After explicit owner approval for this exact action, include pilotPrinterApproval exactly "${expectedApproval}".`,
+      PHYSICAL_PRINTER_GUARD_STATUS
+    );
+  }
+}
+
+function buildJobForRequest(type, req) {
+  const mod = getLabelModule(type);
+  const mode = getMode(req);
+  const options = { mode };
+
+  if (mode === "selected") {
+    options.labels = req.body?.labels;
+  }
+
+  return {
+    mod,
+    mode,
+    job: mod.buildPrintJob(options),
+    options,
+  };
+}
+
+function getPrinterSendOptions(req, mode) {
+  if (mode !== "selected") {
+    return req.body || {};
+  }
+
+  const body = req.body || {};
+  const forbiddenFields = ["ip", "host", "port", "timeoutMs"].filter((field) =>
+    Object.prototype.hasOwnProperty.call(body, field)
+  );
+
+  if (forbiddenFields.length) {
+    throw new ClientInputError(
+      `Selected label printing does not allow printer override field(s): ${forbiddenFields.join(
+        ", "
+      )}.`
+    );
+  }
+
+  return {};
 }
 
 function getPrinterHost() {
@@ -216,10 +281,12 @@ function readExcelWorkbook(type) {
 function createExcelBackup(filePath) {
   const backupDir = path.join(__dirname, "data", "backups");
 
-  if (!fs.existsSync(backupDir)) {
+  try {
     fs.mkdirSync(backupDir, {
       recursive: true,
     });
+  } catch (error) {
+    throw createExcelBackupError(filePath, error);
   }
 
   const parsed = path.parse(filePath);
@@ -229,14 +296,45 @@ function createExcelBackup(filePath) {
     .replace("T", "_")
     .replace("Z", "");
 
-  const backupPath = path.join(
-    backupDir,
-    `${parsed.name}_${timestamp}${parsed.ext}`
-  );
+  let lastError = null;
 
-  fs.copyFileSync(filePath, backupPath);
+  for (let attempt = 0; attempt < MAX_BACKUP_COPY_ATTEMPTS; attempt += 1) {
+    const suffix = attempt === 0 ? "" : `_${attempt}`;
+    const backupPath = path.join(
+      backupDir,
+      `${parsed.name}_${timestamp}${suffix}${parsed.ext}`
+    );
 
-  return backupPath;
+    try {
+      fs.copyFileSync(filePath, backupPath, fs.constants.COPYFILE_EXCL);
+      return backupPath;
+    } catch (error) {
+      lastError = error;
+
+      if (error?.code === "EEXIST") {
+        continue;
+      }
+
+      throw createExcelBackupError(filePath, error);
+    }
+  }
+
+  throw createExcelBackupError(filePath, lastError);
+}
+
+function createExcelBackupError(filePath, error) {
+  const errorCode = error?.code || "UNKNOWN";
+  const message = `The required Excel backup could not be created for ${path.basename(
+    filePath
+  )}. The workbook may be open or locked. Close Excel or any app using the workbook and retry. Original error code: ${errorCode}.`;
+
+  if (BACKUP_LOCK_ERROR_CODES.has(errorCode)) {
+    return new ClientInputError(message, 409);
+  }
+
+  const backupError = new Error(message);
+  backupError.cause = error;
+  return backupError;
 }
 
 function normalizeHeaderName(header) {
@@ -541,6 +639,176 @@ function applyLocationBarcodeAutoFill(type, headers, rowData) {
   return rowData;
 }
 
+function isPositiveIntegerValue(value) {
+  const trimmedValue = String(value ?? "").trim();
+  const numberValue = Number(trimmedValue);
+  return trimmedValue !== "" && Number.isInteger(numberValue) && numberValue > 0;
+}
+
+function isNumericValueText(value) {
+  const trimmedValue = String(value ?? "").trim();
+  return trimmedValue !== "" && Number.isFinite(Number(trimmedValue));
+}
+
+function normalizeLocationBarcodeValue(value) {
+  return String(value ?? "").trim().toUpperCase();
+}
+
+function setBulkLocationRowValue(headers, rowData, columnName, value) {
+  const header = findHeader(headers, columnName) || columnName;
+  rowData[header] = value ?? "";
+}
+
+function splitBulkPasteLine(line) {
+  if (line.includes("\t")) {
+    return line.split("\t");
+  }
+
+  return line.split(",");
+}
+
+function getLocationBulkPasteCells(line) {
+  const cells = splitBulkPasteLine(line);
+
+  if (
+    cells.length === 1 &&
+    !line.includes(",") &&
+    /\S+\s+\S+/.test(line.trim())
+  ) {
+    return line.trim().split(/\s+/);
+  }
+
+  return cells;
+}
+
+function parseLocationBulkPasteLine(headers, line) {
+  const cells = getLocationBulkPasteCells(String(line ?? "")).map((cell) =>
+    String(cell ?? "").trim()
+  );
+  const rowData = {};
+
+  setBulkLocationRowValue(headers, rowData, "Aisle", cells[0] || "");
+  setBulkLocationRowValue(headers, rowData, "Bay", cells[1] || "");
+  setBulkLocationRowValue(headers, rowData, "Level", cells[2] || "");
+  setBulkLocationRowValue(headers, rowData, "Bin", cells[3] || "");
+
+  const fifthValue = cells[4] || "";
+  const sixthValue = cells[5] || "";
+
+  if (cells.length >= 6) {
+    setBulkLocationRowValue(headers, rowData, "Location Barcode", fifthValue);
+    setBulkLocationRowValue(headers, rowData, "Quantity", sixthValue || "1");
+    return rowData;
+  }
+
+  if (cells.length === 5) {
+    if (isNumericValueText(fifthValue)) {
+      setBulkLocationRowValue(headers, rowData, "Quantity", fifthValue);
+    } else {
+      setBulkLocationRowValue(headers, rowData, "Location Barcode", fifthValue);
+      setBulkLocationRowValue(headers, rowData, "Quantity", "1");
+    }
+
+    return rowData;
+  }
+
+  setBulkLocationRowValue(headers, rowData, "Quantity", "1");
+  return rowData;
+}
+
+function getBulkLocationGeneratedBarcode(headers, rowData) {
+  const aisleHeader = findHeader(headers, "Aisle");
+  const bayHeader = findHeader(headers, "Bay");
+  const levelHeader = findHeader(headers, "Level");
+  const binHeader = findHeader(headers, "Bin");
+
+  if (!aisleHeader || !bayHeader || !levelHeader || !binHeader) {
+    return "";
+  }
+
+  return buildLocationBarcodeValueFromFields(
+    rowData,
+    aisleHeader,
+    bayHeader,
+    levelHeader,
+    binHeader
+  );
+}
+
+function normalizeBulkLocationRow(headers, incomingRow) {
+  const rowData =
+    incomingRow && typeof incomingRow === "object" ? { ...incomingRow } : {};
+
+  const aisleHeader = findHeader(headers, "Aisle");
+  const bayHeader = findHeader(headers, "Bay");
+  const levelHeader = findHeader(headers, "Level");
+  const binHeader = findHeader(headers, "Bin");
+  const barcodeHeader = findHeader(headers, "Location Barcode");
+  const quantityHeader = findHeader(headers, "Quantity");
+
+  if (!aisleHeader || !bayHeader || !levelHeader || !binHeader) {
+    return rowData;
+  }
+
+  const generatedBarcode = buildLocationBarcodeValueFromFields(
+    rowData,
+    aisleHeader,
+    bayHeader,
+    levelHeader,
+    binHeader
+  );
+
+  let suppliedBarcode = barcodeHeader
+    ? normalizeLocationBarcodeValue(getIncomingValueByHeader(rowData, barcodeHeader))
+    : "";
+
+  if (quantityHeader) {
+    const quantityValue = getIncomingValueByHeader(rowData, quantityHeader);
+    let cleanQuantity = String(quantityValue ?? "").trim();
+
+    if (
+      cleanQuantity &&
+      !isNumericValueText(cleanQuantity) &&
+      !isPositiveIntegerValue(cleanQuantity) &&
+      barcodeHeader &&
+      !suppliedBarcode
+    ) {
+      suppliedBarcode = normalizeLocationBarcodeValue(cleanQuantity);
+      rowData[barcodeHeader] = suppliedBarcode;
+      rowData[quantityHeader] = 1;
+      cleanQuantity = "1";
+    } else if (generatedBarcode && cleanQuantity === "") {
+      rowData[quantityHeader] = 1;
+      cleanQuantity = "1";
+    }
+
+    if (cleanQuantity && !isPositiveIntegerValue(cleanQuantity)) {
+      throw new Error(`${quantityHeader} must be a positive integer.`);
+    }
+  }
+
+  if (
+    barcodeHeader &&
+    suppliedBarcode &&
+    generatedBarcode &&
+    suppliedBarcode !== generatedBarcode
+  ) {
+    throw new Error(
+      `Location Barcode ${suppliedBarcode} does not match generated barcode ${generatedBarcode}.`
+    );
+  }
+
+  return rowData;
+}
+
+function normalizeBulkExcelRow(type, headers, incomingRow) {
+  if (type === "location") {
+    return normalizeBulkLocationRow(headers, incomingRow);
+  }
+
+  return incomingRow;
+}
+
 function getHeaderIndex(headers, targetHeader) {
   const header = findHeader(headers, targetHeader);
   return header ? headers.indexOf(header) : -1;
@@ -797,8 +1065,6 @@ function appendBulkExcelRows(type, incomingRows) {
     rowsAsArrays,
   } = readExcelWorkbook(type);
 
-  const backupPath = createExcelBackup(filePath);
-
   const cleanedRows = [];
   const addedRows = [];
   const skippedRows = [];
@@ -823,8 +1089,12 @@ function appendBulkExcelRows(type, incomingRows) {
       return;
     }
 
+    let normalizedRow = incomingRow;
+
     try {
-      const values = buildExcelRowFromRequest(type, headers, incomingRow, {
+      normalizedRow = normalizeBulkExcelRow(type, headers, incomingRow);
+
+      const values = buildExcelRowFromRequest(type, headers, normalizedRow, {
         preserveExistingProductBarcode: type === "product",
         reservedGeneratedBarcodes,
       });
@@ -847,16 +1117,23 @@ function appendBulkExcelRows(type, incomingRows) {
       skippedRows.push({
         sourceRowNumber,
         reason: error.message,
-        row: incomingRow,
+        row: normalizedRow,
       });
     }
   });
 
   if (!cleanedRows.length) {
+    const firstSkippedRow = skippedRows[0];
+    const firstSkippedMessage = firstSkippedRow
+      ? ` First skipped row ${firstSkippedRow.sourceRowNumber}: ${firstSkippedRow.reason}`
+      : "";
+
     throw new Error(
-      `No valid rows to upload. ${skippedRows.length} row(s) were skipped.`
+      `No valid rows to upload. ${skippedRows.length} row(s) were skipped.${firstSkippedMessage}`
     );
   }
+
+  const backupPath = createExcelBackup(filePath);
 
   XLSX.utils.sheet_add_aoa(worksheet, cleanedRows, {
     origin: -1,
@@ -879,6 +1156,90 @@ function appendBulkExcelRows(type, incomingRows) {
     bytes: saveResult.bytes,
     modifiedAt: saveResult.modifiedAt,
     backupFile: path.relative(__dirname, backupPath),
+  };
+}
+
+function getBulkLocationValidationLines(req) {
+  if (Array.isArray(req.body?.lines)) {
+    return req.body.lines
+      .map((line) => String(line ?? "").trimEnd())
+      .filter((line) => line.trim() !== "");
+  }
+
+  if (typeof req.body?.text === "string") {
+    return req.body.text
+      .split(/\r?\n/)
+      .map((line) => line.trimEnd())
+      .filter((line) => line.trim() !== "");
+  }
+
+  if (typeof req.body?.line === "string") {
+    const line = req.body.line.trimEnd();
+    return line.trim() ? [line] : [];
+  }
+
+  throw new ClientInputError(
+    "Provide location paste data as a non-empty lines array, text string, or line string."
+  );
+}
+
+function validateBulkLocationPasteLines(lines) {
+  if (!lines.length) {
+    throw new ClientInputError("Provide at least one non-empty location paste row.");
+  }
+
+  const {
+    headers,
+    usableHeaders,
+  } = readExcelWorkbook("location");
+
+  const rows = lines.map((line, index) => {
+    const sourceRowNumber = index + 1;
+    const parsedRow = parseLocationBulkPasteLine(headers, line);
+    const generatedBarcode = getBulkLocationGeneratedBarcode(headers, parsedRow);
+
+    try {
+      const normalizedRow = normalizeBulkExcelRow("location", headers, parsedRow);
+      const values = buildExcelRowFromRequest("location", headers, normalizedRow);
+      const previewRow = {};
+
+      usableHeaders.forEach((header) => {
+        const columnIndex = headers.indexOf(header);
+        previewRow[header] = values[columnIndex] ?? "";
+      });
+
+      return {
+        sourceRowNumber,
+        input: line,
+        valid: true,
+        generatedBarcode,
+        parsedRow,
+        previewRow,
+        issues: [],
+      };
+    } catch (error) {
+      return {
+        sourceRowNumber,
+        input: line,
+        valid: false,
+        generatedBarcode,
+        parsedRow,
+        previewRow: null,
+        issues: [error.message],
+      };
+    }
+  });
+
+  const validRows = rows.filter((row) => row.valid);
+  const invalidRows = rows.filter((row) => !row.valid);
+
+  return {
+    type: "location",
+    rowCount: rows.length,
+    validRowCount: validRows.length,
+    invalidRowCount: invalidRows.length,
+    allValid: invalidRows.length === 0,
+    rows,
   };
 }
 
@@ -1431,10 +1792,16 @@ function findDuplicateRows(type) {
   return duplicates;
 }
 
-function buildPrintValidation(type, mode) {
+function buildPrintValidation(type, mode, options = {}) {
   const mod = getLabelModule(type);
-  const job = mod.buildPrintJob({ mode });
-  const duplicates = findDuplicateRows(type);
+  const jobOptions = { mode };
+
+  if (mode === "selected") {
+    jobOptions.labels = options.labels;
+  }
+
+  const job = mod.buildPrintJob(jobOptions);
+  const duplicates = mode === "selected" ? [] : findDuplicateRows(type);
   const warnings = [];
 
   if (duplicates.length) {
@@ -1522,10 +1889,7 @@ app.get("/api/validate/:type", (req, res) => {
       ...validation,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
@@ -2314,10 +2678,7 @@ app.post("/api/parts/add-row", (req, res) => {
       status,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
@@ -2336,10 +2697,7 @@ app.post("/api/parts/bulk-add", (req, res) => {
       status,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
@@ -2480,10 +2838,7 @@ app.post(
         status,
       });
     } catch (error) {
-      res.status(500).json({
-        ok: false,
-        error: error.message || "Failed to upload Parts Inventory import file.",
-      });
+      sendJsonError(res, error);
     }
   }
 );
@@ -2557,10 +2912,7 @@ app.post("/api/parts/update-row", (req, res) => {
       status,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
@@ -2581,1291 +2933,11 @@ app.post("/api/parts/delete-rows", (req, res) => {
       status,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
 
-
-const yardInventoryFile = path.join(__dirname, "data", "yard-inventory.xlsx");
-const YARD_SHEET_NAME = "Yard Inventory";
-const YARD_HEADERS = [
-  "Placement ID",
-  "Unit Number",
-  "Serial Number",
-  "Equipment Type",
-  "Make",
-  "Model",
-  "Year",
-  "Hours",
-  "Capacity",
-  "Tire Type",
-  "Fuel Type",
-  "Mast Raised",
-  "Mast Lowered",
-  "Attachment",
-  "Area",
-  "Zone",
-  "Row",
-  "Slot",
-  "Availability Status",
-  "Condition Status",
-  "Customer Hold",
-  "Last Moved Date",
-  "Moved By",
-  "Notes",
-  "Date Created",
-  "Last Updated",
-];
-
-const YARD_IMPORT_COLUMNS = [
-  "Unit Number",
-  "Serial Number",
-  "Equipment Type",
-  "Make",
-  "Model",
-  "Year",
-  "Hours",
-  "Capacity",
-  "Tire Type",
-  "Fuel Type",
-  "Mast Raised",
-  "Mast Lowered",
-  "Attachment",
-  "Area",
-  "Zone",
-  "Row",
-  "Slot",
-  "Availability Status",
-  "Condition Status",
-  "Customer Hold",
-  "Last Moved Date",
-  "Moved By",
-  "Notes",
-];
-const YARD_AREA_VALUES = [
-  "Transportation Bay",
-  "Showroom",
-  "Yard",
-];
-const YARD_ZONE_VALUES = [
-  "Outbound",
-  "Inbound",
-  "Section 1",
-  "Section 2",
-  "Section 3",
-  "Section 4",
-  "Sold Lane",
-  "Rental",
-];
-const YARD_AVAILABILITY_VALUES = [
-  "Available",
-  "Rental Ready",
-  "Reserved",
-  "On Hold",
-  "Sold",
-  "Out on Rent",
-  "In Service",
-  "Unavailable",
-  "Unknown",
-];
-const YARD_CONDITION_VALUES = [
-  "Ready",
-  "Needs Cleaning",
-  "Needs Service",
-  "Damaged",
-  "Inspection Needed",
-  "Battery Charging",
-  "Fuel Needed",
-  "Parts Needed",
-  "Unknown",
-];
-const YARD_CUSTOMER_HOLD_VALUES = ["No", "Yes"];
-const YARD_EQUIPMENT_TYPE_VALUES = [
-  "Forklift",
-  "Scissor Lift",
-  "Piggyback",
-  "Order Picker",
-];
-const YARD_ZONE_VALUES_BY_AREA = {
-  "Transportation Bay": ["Outbound", "Inbound"],
-  Showroom: ["Section 1", "Section 2", "Section 3", "Sold Lane"],
-  Yard: ["Section 1", "Section 2", "Section 3", "Section 4", "Rental"],
-};
-
-function getTodayDateString() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function getYardZoneValuesForArea(area) {
-  const normalizedArea = normalizePropertyArea(area || "Yard");
-  return YARD_ZONE_VALUES_BY_AREA[normalizedArea] || [];
-}
-
-function ensureYardInventoryWorkbook() {
-  const dataDir = path.dirname(yardInventoryFile);
-
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, {
-      recursive: true,
-    });
-  }
-
-  if (fs.existsSync(yardInventoryFile)) {
-    return;
-  }
-
-  const workbook = XLSX.utils.book_new();
-  const worksheet = XLSX.utils.aoa_to_sheet([YARD_HEADERS]);
-  XLSX.utils.book_append_sheet(workbook, worksheet, YARD_SHEET_NAME);
-  XLSX.writeFile(workbook, yardInventoryFile);
-}
-
-function readYardInventoryWorkbook() {
-  ensureYardInventoryWorkbook();
-
-  const workbook = XLSX.readFile(yardInventoryFile, {
-    cellDates: true,
-    cellNF: false,
-    cellText: false,
-  });
-
-  const sheetName = workbook.SheetNames.includes(YARD_SHEET_NAME)
-    ? YARD_SHEET_NAME
-    : workbook.SheetNames[0];
-
-  if (!sheetName) {
-    throw new Error(`No worksheet found in ${yardInventoryFile}.`);
-  }
-
-  const worksheet = workbook.Sheets[sheetName];
-
-  if (!worksheet) {
-    throw new Error(`Worksheet ${sheetName} could not be read.`);
-  }
-
-  let rowsAsArrays = XLSX.utils.sheet_to_json(worksheet, {
-    header: 1,
-    defval: "",
-    blankrows: false,
-  });
-
-  if (!rowsAsArrays.length) {
-    rowsAsArrays = [YARD_HEADERS];
-  }
-
-  const headerRow = rowsAsArrays[0] || [];
-  let headers = headerRow.map((header) => String(header || "").trimEnd());
-  let changedHeaders = false;
-
-  YARD_HEADERS.forEach((requiredHeader) => {
-    if (!findHeader(headers, requiredHeader)) {
-      headers.push(requiredHeader);
-      changedHeaders = true;
-    }
-  });
-
-  if (changedHeaders) {
-    rowsAsArrays[0] = headers;
-    const rebuiltWorksheet = XLSX.utils.aoa_to_sheet(rowsAsArrays);
-    workbook.Sheets[sheetName] = rebuiltWorksheet;
-    writeWorkbookToDisk(workbook, yardInventoryFile);
-  }
-
-  const usableHeaders = YARD_HEADERS.filter((header) => String(header || "").trim() !== "");
-
-  return {
-    filePath: yardInventoryFile,
-    workbook,
-    worksheet: workbook.Sheets[sheetName],
-    sheetName,
-    headers,
-    usableHeaders,
-    rowsAsArrays,
-  };
-}
-
-function getYardRowsAsObjects() {
-  const { worksheet, usableHeaders } = readYardInventoryWorkbook();
-
-  const rows = XLSX.utils.sheet_to_json(worksheet, {
-    defval: "",
-    blankrows: false,
-  }).map((row, index) => {
-    const cleanRow = { __excelRowNumber: index + 2 };
-    YARD_HEADERS.forEach((header) => {
-      cleanRow[header] = getIncomingValueByHeader(row, header) ?? "";
-    });
-    return cleanRow;
-  });
-
-  return {
-    rows,
-    columns: usableHeaders,
-  };
-}
-
-function normalizeYardChoice(value, allowedValues, fieldName, defaultValue) {
-  const text = String(value ?? "").trim();
-
-  if (!text) {
-    return defaultValue;
-  }
-
-  const match = allowedValues.find((allowedValue) => {
-    return allowedValue.toLowerCase() === text.toLowerCase();
-  });
-
-  if (!match) {
-    throw new Error(`${fieldName} must be one of: ${allowedValues.join(", ")}.`);
-  }
-
-  return match;
-}
-
-function normalizeYardYear(value) {
-  const text = String(value ?? "").trim();
-
-  if (!text) {
-    return "";
-  }
-
-  if (!/^\d{4}$/.test(text)) {
-    throw new Error("Year must be blank or a valid 4-digit year.");
-  }
-
-  return text;
-}
-
-function normalizePropertyArea(value) {
-  const text = String(value ?? "").trim().toLowerCase();
-
-  if (["transportation bay", "transport", "transportation", "shipping", "receiving"].includes(text)) return "Transportation Bay";
-  if (["showroom", "show room"].includes(text)) return "Showroom";
-  if (["yard", "outside yard", "outdoor yard"].includes(text)) return "Yard";
-
-  return String(value ?? "").trim();
-}
-
-function normalizePropertyZone(value) {
-  const text = String(value ?? "").trim().toLowerCase();
-
-  if (["outbound", "out bound"].includes(text)) return "Outbound";
-  if (["inbound", "in bound"].includes(text)) return "Inbound";
-  if (["section 1", "1", "section 5", "5", "section 10", "10", "showroom section 5", "yard section 10"].includes(text)) return "Section 1";
-  if (["section 2", "2", "section 6", "6", "section 14", "14", "showroom section 6", "yard section 14"].includes(text)) return "Section 2";
-  if (["section 3", "3", "section 7", "7", "section 11", "11", "showroom section 7", "yard section 11"].includes(text)) return "Section 3";
-  if (["section 4", "4", "section 12", "12", "yard section 12"].includes(text)) return "Section 4";
-  if (["sold lane", "sold", "sales", "sales row"].includes(text)) return "Sold Lane";
-  if (["rental", "rental row", "rental line"].includes(text)) return "Rental";
-
-  return String(value ?? "").trim();
-}
-
-function normalizePropertyColumn(value) {
-  const text = String(value ?? "").trim();
-  return ["sales", "sales row", "sold lane", "sold"].includes(text.toLowerCase()) ? "Sold Lane" : text.toUpperCase();
-}
-
-function normalizePropertySlot(value) {
-  const match = String(value ?? "").trim().match(/\d+/);
-  return match ? String(Number(match[0])) : "";
-}
-
-const PROPERTY_LOCATION_RULES = [
-  { area: "Transportation Bay", zone: "Outbound", columns: ["A", "B"], minSlot: 1, maxSlot: 10 },
-  { area: "Transportation Bay", zone: "Inbound", columns: ["C", "D"], minSlot: 1, maxSlot: 10 },
-  { area: "Showroom", zone: "Section 1", columns: ["A", "B"], minSlot: 1, maxSlot: 19, openSpaces: { A: [1, 2, 3, 4, 5, 6] } },
-  { area: "Showroom", zone: "Section 2", columns: ["C", "D"], minSlot: 1, maxSlot: 19 },
-  { area: "Showroom", zone: "Section 3", columns: ["E", "F"], minSlot: 1, maxSlot: 19 },
-  { area: "Showroom", zone: "Sold Lane", columns: ["Sold Lane"], minSlot: 1, maxSlot: 7 },
-  { area: "Yard", zone: "Section 1", columns: ["A", "B"], minSlot: 1, maxSlot: 13 },
-  { area: "Yard", zone: "Section 2", columns: ["C", "D"], minSlot: 1, maxSlot: 13 },
-  { area: "Yard", zone: "Section 3", columns: ["E", "F"], minSlot: 1, maxSlot: 16 },
-  { area: "Yard", zone: "Section 4", columns: ["G", "H"], minSlot: 1, maxSlot: 16 },
-  { area: "Yard", zone: "Rental", columns: ["I", "J"], minSlot: 1, maxSlot: 16 },
-];
-
-function getPropertyLocationRule(area, zone, column, slot) {
-  const normalizedArea = normalizePropertyArea(area);
-  const normalizedZone = normalizePropertyZone(zone);
-  const normalizedColumn = normalizePropertyColumn(column);
-  const normalizedSlot = Number(normalizePropertySlot(slot));
-
-  return PROPERTY_LOCATION_RULES.find((rule) => {
-    if (rule.area !== normalizedArea || rule.zone !== normalizedZone) {
-      return false;
-    }
-
-    if (!rule.columns.includes(normalizedColumn) || !Number.isInteger(normalizedSlot)) {
-      return false;
-    }
-
-    if (rule.openSpaces?.[normalizedColumn]?.includes(normalizedSlot)) {
-      return false;
-    }
-
-    return normalizedSlot >= rule.minSlot && normalizedSlot <= rule.maxSlot;
-  }) || null;
-}
-
-function isMappedLocationAreaZone(area, zone) {
-  const normalizedArea = normalizePropertyArea(area);
-  const normalizedZone = normalizePropertyZone(zone);
-  return PROPERTY_LOCATION_RULES.some((rule) => rule.area === normalizedArea && rule.zone === normalizedZone);
-}
-
-function getPropertyLocationKey(area, zone, column, slot) {
-  return `${normalizePropertyArea(area)}|${normalizePropertyZone(zone)}|${normalizePropertyColumn(column)}|${normalizePropertySlot(slot)}`;
-}
-
-function isValidPropertyLocation(area, zone, column, slot) {
-  return Boolean(getPropertyLocationRule(area, zone, column, slot));
-}
-
-function getPropertyLocationValidationMessage(area, zone, column, slot) {
-  const normalizedArea = normalizePropertyArea(area);
-  const normalizedZone = normalizePropertyZone(zone);
-
-  if (!isMappedLocationAreaZone(normalizedArea, normalizedZone)) {
-    return "";
-  }
-
-  if (isValidPropertyLocation(normalizedArea, normalizedZone, column, slot)) {
-    return "";
-  }
-
-  if (normalizedArea === "Transportation Bay") {
-    return "Transportation Bay locations must use Outbound A/B 1-10 or Inbound C/D 1-10.";
-  }
-
-  if (normalizedArea === "Showroom" && normalizedZone === "Sold Lane") {
-    return "Sold Lane locations must use Row Sold Lane with slots 1-7.";
-  }
-
-  if (normalizedArea === "Showroom") {
-    return "Showroom locations must use Section 1 A7-A19, Section 1 B1-B19, Section 2 C/D 1-19, Section 3 E/F 1-19, or Sold Lane 1-7.";
-  }
-
-  if (normalizedArea === "Yard") {
-    return "Outside Yard locations must use Section 1 A/B 1-13, Section 2 C/D 1-13, Section 3 E/F 1-16, Section 4 G/H 1-16, or Rental I/J 1-16.";
-  }
-
-  return "Selected map location is not valid.";
-}
-
-function normalizeShowroomZone(value) {
-  return normalizePropertyZone(value);
-}
-
-function normalizeShowroomColumn(value) {
-  return normalizePropertyColumn(value);
-}
-
-function normalizeShowroomSlot(value) {
-  return normalizePropertySlot(value);
-}
-
-function getShowroomBayKey(zone, column, slot) {
-  return getPropertyLocationKey("Showroom", zone, column, slot);
-}
-
-function isValidShowroomBay(zone, column, slot) {
-  return isValidPropertyLocation("Showroom", zone, column, slot);
-}
-
-function getShowroomBayValidationMessage() {
-  return "Showroom locations must use Section 1 A7-A19, Section 1 B1-B19, Section 2 C/D 1-19, Section 3 E/F 1-19, or Sold Lane 1-7.";
-}
-
-function getYardReservedValues(headers, rowsAsArrays, skipExcelRowNumber = null) {
-  const unitIndex = getHeaderIndex(headers, "Unit Number");
-  const areaIndex = getHeaderIndex(headers, "Area");
-  const zoneIndex = getHeaderIndex(headers, "Zone");
-  const rowIndex = getHeaderIndex(headers, "Row");
-  const slotIndex = getHeaderIndex(headers, "Slot");
-  const unitNumbers = new Set();
-  const showroomBays = new Map();
-  const propertyLocations = new Map();
-
-  rowsAsArrays.slice(1).forEach((rowArray, index) => {
-    const excelRowNumber = index + 2;
-
-    if (skipExcelRowNumber && excelRowNumber === skipExcelRowNumber) {
-      return;
-    }
-
-    let cleanUnitNumber = "";
-
-    if (unitIndex >= 0) {
-      cleanUnitNumber = String(rowArray[unitIndex] ?? "").trim();
-
-      if (cleanUnitNumber) {
-        unitNumbers.add(cleanUnitNumber.toLowerCase());
-      }
-    }
-
-    const area = areaIndex >= 0 ? rowArray[areaIndex] : "";
-    const zone = zoneIndex >= 0 ? rowArray[zoneIndex] : "";
-    const column = rowIndex >= 0 ? rowArray[rowIndex] : "";
-    const slot = slotIndex >= 0 ? rowArray[slotIndex] : "";
-
-    if (isValidPropertyLocation(area, zone, column, slot)) {
-      const occupyingLabel = cleanUnitNumber || `Excel row ${excelRowNumber}`;
-      const propertyKey = getPropertyLocationKey(area, zone, column, slot);
-      propertyLocations.set(propertyKey, occupyingLabel);
-
-      if (normalizePropertyArea(area) === "Showroom") {
-        showroomBays.set(getShowroomBayKey(zone, column, slot), occupyingLabel);
-      }
-    }
-  });
-
-  return {
-    unitNumbers,
-    showroomBays,
-    propertyLocations,
-  };
-}
-
-function getNextYardPlacementId(rowsAsArrays, headers) {
-  const placementIdIndex = getHeaderIndex(headers, "Placement ID");
-  let maxNumber = 0;
-
-  if (placementIdIndex < 0) {
-    return "YARD-000001";
-  }
-
-  rowsAsArrays.slice(1).forEach((rowArray) => {
-    const value = String(rowArray[placementIdIndex] ?? "").trim();
-    const match = value.match(/^YARD-(\d{1,})$/i);
-
-    if (match) {
-      const numberValue = Number(match[1]);
-
-      if (Number.isInteger(numberValue) && numberValue > maxNumber) {
-        maxNumber = numberValue;
-      }
-    }
-  });
-
-  return `YARD-${String(maxNumber + 1).padStart(6, "0")}`;
-}
-
-function getYardPlacementIdNumber(placementId) {
-  const match = String(placementId || "").trim().match(/^YARD-(\d{1,})$/i);
-
-  if (!match) {
-    return 0;
-  }
-
-  const numberValue = Number(match[1]);
-  return Number.isInteger(numberValue) ? numberValue : 0;
-}
-
-function buildYardPlacementIdFromNumber(numberValue) {
-  return `YARD-${String(numberValue).padStart(6, "0")}`;
-}
-
-function buildYardRowFromRequest(headers, incomingRow, options = {}) {
-  const rowData = incomingRow && typeof incomingRow === "object" ? { ...incomingRow } : {};
-  const now = new Date().toISOString();
-  const reserved = options.reserved || {
-    unitNumbers: new Set(),
-    showroomBays: new Map(),
-  };
-  const existingRow = options.existingRow || {};
-  const unitNumber = String(getIncomingValueByHeader(rowData, "Unit Number") ?? "").trim().toUpperCase();
-
-  if (!unitNumber) {
-    throw new Error("Unit Number is required.");
-  }
-
-  if (reserved.unitNumbers.has(unitNumber.toLowerCase())) {
-    throw new Error(`Unit Number ${unitNumber} already exists in Yard Inventory.`);
-  }
-
-  let area = normalizeYardChoice(
-    normalizePropertyArea(getIncomingValueByHeader(rowData, "Area")),
-    YARD_AREA_VALUES,
-    "Area",
-    "Yard"
-  );
-  const availabilityStatus = normalizeYardChoice(
-    getIncomingValueByHeader(rowData, "Availability Status"),
-    YARD_AVAILABILITY_VALUES,
-    "Availability Status",
-    "Available"
-  );
-  const conditionStatus = normalizeYardChoice(
-    getIncomingValueByHeader(rowData, "Condition Status"),
-    YARD_CONDITION_VALUES,
-    "Condition Status",
-    "Ready"
-  );
-
-  if (!area) {
-    throw new Error("Area is required.");
-  }
-
-  if (!availabilityStatus) {
-    throw new Error("Availability Status is required.");
-  }
-
-  if (!conditionStatus) {
-    throw new Error("Condition Status is required.");
-  }
-
-  const allowedZonesForArea = getYardZoneValuesForArea(area);
-  let zone = normalizeYardChoice(
-    normalizePropertyZone(getIncomingValueByHeader(rowData, "Zone")),
-    allowedZonesForArea,
-    "Zone",
-    allowedZonesForArea[0] || ""
-  );
-  let rowPosition = String(getIncomingValueByHeader(rowData, "Row") ?? "").trim().toUpperCase();
-  let slotPosition = String(getIncomingValueByHeader(rowData, "Slot") ?? "").trim().toUpperCase();
-
-  area = normalizePropertyArea(area);
-  zone = normalizePropertyZone(zone);
-
-  if (!getYardZoneValuesForArea(area).includes(zone)) {
-    throw new Error(`${area} zone must be one of: ${getYardZoneValuesForArea(area).join(", ")}.`);
-  }
-
-  if (isMappedLocationAreaZone(area, zone)) {
-    rowPosition = normalizePropertyColumn(rowPosition);
-    slotPosition = normalizePropertySlot(slotPosition);
-
-    const mapValidationMessage = getPropertyLocationValidationMessage(area, zone, rowPosition, slotPosition);
-
-    if (mapValidationMessage) {
-      throw new Error(mapValidationMessage);
-    }
-
-    const propertyKey = getPropertyLocationKey(area, zone, rowPosition, slotPosition);
-    const occupyingUnit = reserved.propertyLocations?.get(propertyKey);
-
-    if (occupyingUnit) {
-      const locationLabel = [area, zone, rowPosition, slotPosition].filter(Boolean).join(" / ");
-      throw new Error(`${locationLabel} is already occupied by ${occupyingUnit}.`);
-    }
-  }
-
-  const equipmentType = normalizeYardChoice(
-    getIncomingValueByHeader(rowData, "Equipment Type"),
-    YARD_EQUIPMENT_TYPE_VALUES,
-    "Equipment Type",
-    "Forklift"
-  );
-  const hasExistingRow = Boolean(existingRow && Object.keys(existingRow).length);
-  const previousArea = normalizePropertyArea(existingRow.Area || "");
-  const previousZone = normalizePropertyZone(existingRow.Zone || "");
-  const previousRow = normalizePropertyColumn(existingRow.Row || "");
-  const previousSlot = normalizePropertySlot(existingRow.Slot || "");
-  const locationChanged = hasExistingRow && (
-    previousArea !== area ||
-    previousZone !== zone ||
-    previousRow !== rowPosition ||
-    previousSlot !== slotPosition
-  );
-  const incomingLastMovedDate = String(getIncomingValueByHeader(rowData, "Last Moved Date") ?? "").trim();
-  const lastMovedDate = locationChanged ? getTodayDateString() : incomingLastMovedDate;
-
-  const cleanRow = {
-    "Placement ID": options.placementId || existingRow["Placement ID"] || "",
-    "Unit Number": unitNumber,
-    "Serial Number": String(getIncomingValueByHeader(rowData, "Serial Number") ?? "").trim(),
-    "Equipment Type": equipmentType,
-    Make: String(getIncomingValueByHeader(rowData, "Make") ?? "").trim(),
-    Model: String(getIncomingValueByHeader(rowData, "Model") ?? "").trim(),
-    Year: normalizeYardYear(getIncomingValueByHeader(rowData, "Year")),
-    Hours: String(getIncomingValueByHeader(rowData, "Hours") ?? "").trim(),
-    Capacity: String(getIncomingValueByHeader(rowData, "Capacity") ?? "").trim(),
-    "Tire Type": String(getIncomingValueByHeader(rowData, "Tire Type") ?? "").trim(),
-    "Fuel Type": String(getIncomingValueByHeader(rowData, "Fuel Type") ?? "").trim(),
-    "Mast Raised": String(getIncomingValueByHeader(rowData, "Mast Raised") ?? "").trim(),
-    "Mast Lowered": String(getIncomingValueByHeader(rowData, "Mast Lowered") ?? "").trim(),
-    Attachment: String(getIncomingValueByHeader(rowData, "Attachment") ?? "").trim(),
-    Area: area,
-    Zone: zone,
-    Row: rowPosition,
-    Slot: slotPosition,
-    "Availability Status": availabilityStatus,
-    "Condition Status": conditionStatus,
-    "Customer Hold": normalizeYardChoice(
-      getIncomingValueByHeader(rowData, "Customer Hold"),
-      YARD_CUSTOMER_HOLD_VALUES,
-      "Customer Hold",
-      "No"
-    ),
-    "Last Moved Date": lastMovedDate,
-    "Moved By": String(getIncomingValueByHeader(rowData, "Moved By") ?? "").trim(),
-    Notes: String(getIncomingValueByHeader(rowData, "Notes") ?? "").trim(),
-    "Date Created": options.dateCreated || existingRow["Date Created"] || now,
-    "Last Updated": now,
-  };
-
-  return headers.map((header) => {
-    if (!header || String(header).trim() === "") {
-      return "";
-    }
-
-    return Object.prototype.hasOwnProperty.call(cleanRow, header)
-      ? cleanRow[header]
-      : String(getIncomingValueByHeader(rowData, header) ?? "").trim();
-  });
-}
-
-function appendYardInventoryRow(incomingRow) {
-  const {
-    filePath,
-    workbook,
-    worksheet,
-    sheetName,
-    headers,
-    usableHeaders,
-    rowsAsArrays,
-  } = readYardInventoryWorkbook();
-
-  const reserved = getYardReservedValues(headers, rowsAsArrays);
-  const placementId = getNextYardPlacementId(rowsAsArrays, headers);
-  const values = buildYardRowFromRequest(headers, incomingRow, {
-    reserved,
-    placementId,
-  });
-  const backupPath = createExcelBackup(filePath);
-  const nextExcelRowNumber = rowsAsArrays.length + 1;
-
-  XLSX.utils.sheet_add_aoa(worksheet, [values], {
-    origin: -1,
-  });
-
-  workbook.Sheets[sheetName] = worksheet;
-
-  const saveResult = writeWorkbookToDisk(workbook, filePath);
-  const addedRow = {};
-
-  usableHeaders.forEach((header) => {
-    const columnIndex = headers.indexOf(header);
-    addedRow[header] = values[columnIndex] ?? "";
-  });
-
-  return {
-    sheetName,
-    excelRowNumber: nextExcelRowNumber,
-    columns: usableHeaders,
-    row: addedRow,
-    savedTo: saveResult.savedTo,
-    savedToRelative: saveResult.savedToRelative,
-    bytes: saveResult.bytes,
-    modifiedAt: saveResult.modifiedAt,
-    backupFile: path.relative(__dirname, backupPath),
-  };
-}
-
-function appendBulkYardInventoryRows(incomingRows) {
-  if (!Array.isArray(incomingRows) || !incomingRows.length) {
-    throw new Error("Paste at least one yard inventory row before uploading.");
-  }
-
-  const {
-    filePath,
-    workbook,
-    sheetName,
-    headers,
-    usableHeaders,
-    rowsAsArrays,
-  } = readYardInventoryWorkbook();
-
-  const reserved = getYardReservedValues(headers, rowsAsArrays);
-  const startingPlacementIdNumber = getYardPlacementIdNumber(getNextYardPlacementId(rowsAsArrays, headers));
-  let nextPlacementIdNumber = startingPlacementIdNumber;
-  const acceptedRows = [];
-  const skippedRows = [];
-
-  incomingRows.forEach((incomingRow, index) => {
-    try {
-      const placementId = buildYardPlacementIdFromNumber(nextPlacementIdNumber);
-      const values = buildYardRowFromRequest(headers, incomingRow, {
-        reserved,
-        placementId,
-      });
-
-      const unitIndex = getHeaderIndex(headers, "Unit Number");
-      const cleanUnitNumber = unitIndex >= 0 ? String(values[unitIndex] ?? "").trim() : "";
-
-      if (cleanUnitNumber) {
-        reserved.unitNumbers.add(cleanUnitNumber.toLowerCase());
-      }
-
-      const areaIndex = getHeaderIndex(headers, "Area");
-      const zoneIndex = getHeaderIndex(headers, "Zone");
-      const rowPositionIndex = getHeaderIndex(headers, "Row");
-      const slotIndex = getHeaderIndex(headers, "Slot");
-      const cleanArea = areaIndex >= 0 ? String(values[areaIndex] ?? "").trim() : "";
-
-      if (isValidPropertyLocation(values[areaIndex], values[zoneIndex], values[rowPositionIndex], values[slotIndex])) {
-        const propertyKey = getPropertyLocationKey(values[areaIndex], values[zoneIndex], values[rowPositionIndex], values[slotIndex]);
-        reserved.propertyLocations.set(propertyKey, cleanUnitNumber || placementId);
-
-        if (normalizePropertyArea(values[areaIndex]) === "Showroom") {
-          reserved.showroomBays.set(
-            getShowroomBayKey(values[zoneIndex], values[rowPositionIndex], values[slotIndex]),
-            cleanUnitNumber || placementId
-          );
-        }
-      }
-
-      acceptedRows.push({
-        sourceRowNumber: index + 1,
-        excelRowNumber: rowsAsArrays.length + acceptedRows.length + 1,
-        values,
-      });
-      nextPlacementIdNumber += 1;
-    } catch (error) {
-      skippedRows.push({
-        sourceRowNumber: index + 1,
-        error: error.message,
-      });
-    }
-  });
-
-  if (!acceptedRows.length) {
-    const details = skippedRows.map((row) => `Row ${row.sourceRowNumber}: ${row.error}`).join("; ");
-    throw new Error(details || "No valid yard inventory rows were found to upload.");
-  }
-
-  const backupPath = createExcelBackup(filePath);
-  const rebuiltRows = [
-    ...rowsAsArrays,
-    ...acceptedRows.map((row) => row.values),
-  ];
-  const newWorksheet = XLSX.utils.aoa_to_sheet(rebuiltRows);
-  workbook.Sheets[sheetName] = newWorksheet;
-
-  const saveResult = writeWorkbookToDisk(workbook, filePath);
-
-  return {
-    sheetName,
-    uploadedRowCount: acceptedRows.length,
-    skippedRowCount: skippedRows.length,
-    skippedRows,
-    uploadedExcelRowNumbers: acceptedRows.map((row) => row.excelRowNumber),
-    columns: usableHeaders,
-    savedTo: saveResult.savedTo,
-    savedToRelative: saveResult.savedToRelative,
-    bytes: saveResult.bytes,
-    modifiedAt: saveResult.modifiedAt,
-    backupFile: path.relative(__dirname, backupPath),
-  };
-}
-
-function updateYardInventoryRow(excelRowNumber, incomingRow) {
-  const safeRowNumber = Number(excelRowNumber);
-
-  if (!Number.isInteger(safeRowNumber) || safeRowNumber < 2) {
-    throw new Error("Select one valid yard inventory row to update.");
-  }
-
-  const {
-    filePath,
-    workbook,
-    sheetName,
-    headers,
-    usableHeaders,
-    rowsAsArrays,
-  } = readYardInventoryWorkbook();
-
-  const rowIndex = safeRowNumber - 1;
-  const existingRowArray = rowsAsArrays[rowIndex];
-
-  if (!existingRowArray) {
-    throw new Error(`Excel row ${safeRowNumber} was not found.`);
-  }
-
-  const existingRow = {};
-
-  usableHeaders.forEach((header) => {
-    const columnIndex = headers.indexOf(header);
-    existingRow[header] = existingRowArray[columnIndex] ?? "";
-  });
-
-  const reserved = getYardReservedValues(headers, rowsAsArrays, safeRowNumber);
-  const values = buildYardRowFromRequest(headers, incomingRow, {
-    reserved,
-    existingRow,
-    placementId: existingRow["Placement ID"] || getNextYardPlacementId(rowsAsArrays, headers),
-    dateCreated: existingRow["Date Created"] || new Date().toISOString(),
-  });
-
-  const backupPath = createExcelBackup(filePath);
-  const rebuiltRows = rowsAsArrays.map((rowArray, index) => {
-    if (index === safeRowNumber - 1) {
-      return values;
-    }
-
-    return rowArray;
-  });
-
-  const newWorksheet = XLSX.utils.aoa_to_sheet(rebuiltRows);
-  workbook.Sheets[sheetName] = newWorksheet;
-
-  const saveResult = writeWorkbookToDisk(workbook, filePath);
-  const updatedRow = {};
-
-  usableHeaders.forEach((header) => {
-    const columnIndex = headers.indexOf(header);
-    updatedRow[header] = values[columnIndex] ?? "";
-  });
-
-  return {
-    sheetName,
-    excelRowNumber: safeRowNumber,
-    columns: usableHeaders,
-    row: updatedRow,
-    savedTo: saveResult.savedTo,
-    savedToRelative: saveResult.savedToRelative,
-    bytes: saveResult.bytes,
-    modifiedAt: saveResult.modifiedAt,
-    backupFile: path.relative(__dirname, backupPath),
-  };
-}
-
-function deleteYardInventoryRows(excelRowNumbers) {
-  if (!Array.isArray(excelRowNumbers) || !excelRowNumbers.length) {
-    throw new Error("Select at least one saved yard inventory row to delete.");
-  }
-
-  const safeRowNumbers = Array.from(
-    new Set(
-      excelRowNumbers
-        .map((rowNumber) => Number(rowNumber))
-        .filter((rowNumber) => Number.isInteger(rowNumber) && rowNumber >= 2)
-    )
-  ).sort((a, b) => a - b);
-
-  if (!safeRowNumbers.length) {
-    throw new Error("Select at least one valid saved yard inventory row to delete.");
-  }
-
-  const {
-    filePath,
-    workbook,
-    sheetName,
-    headers,
-    rowsAsArrays,
-  } = readYardInventoryWorkbook();
-
-  const rowNumberSet = new Set(safeRowNumbers);
-  const backupPath = createExcelBackup(filePath);
-  const keptRows = [headers];
-  const deletedRows = [];
-
-  rowsAsArrays.slice(1).forEach((rowArray, index) => {
-    const excelRowNumber = index + 2;
-
-    if (rowNumberSet.has(excelRowNumber)) {
-      deletedRows.push({
-        excelRowNumber,
-        values: rowArray,
-      });
-      return;
-    }
-
-    keptRows.push(rowArray);
-  });
-
-  if (!deletedRows.length) {
-    throw new Error("No matching yard inventory rows were found to delete.");
-  }
-
-  const newWorksheet = XLSX.utils.aoa_to_sheet(keptRows);
-  workbook.Sheets[sheetName] = newWorksheet;
-
-  const saveResult = writeWorkbookToDisk(workbook, filePath);
-
-  return {
-    sheetName,
-    deletedRowCount: deletedRows.length,
-    remainingDataRowCount: keptRows.length - 1,
-    deletedExcelRowNumbers: deletedRows.map((row) => row.excelRowNumber),
-    savedTo: saveResult.savedTo,
-    savedToRelative: saveResult.savedToRelative,
-    bytes: saveResult.bytes,
-    modifiedAt: saveResult.modifiedAt,
-    backupFile: path.relative(__dirname, backupPath),
-  };
-}
-
-app.get("/api/yard/columns", (req, res) => {
-  try {
-    const { filePath, sheetName, usableHeaders } = readYardInventoryWorkbook();
-
-    res.json({
-      ok: true,
-      sheetName,
-      columns: usableHeaders,
-      filePath,
-      relativeFilePath: path.relative(__dirname, filePath),
-    });
-  } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
-  }
-});
-
-
-function normalizeYardImportHeader(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ");
-}
-
-function isYardImportHeaderRow(cells) {
-  if (!Array.isArray(cells) || cells.length < 2) {
-    return false;
-  }
-
-  const normalizedCells = cells.map(normalizeYardImportHeader);
-  const requiredHeaderCount = YARD_IMPORT_COLUMNS.filter((column) => {
-    return normalizedCells.includes(normalizeYardImportHeader(column));
-  }).length;
-
-  return requiredHeaderCount >= 4 && normalizedCells.includes("unit number");
-}
-
-function parseYardImportRowsFromBuffer(buffer, fileName = "yard-import.xlsx") {
-  if (!Buffer.isBuffer(buffer) || !buffer.length) {
-    throw new Error("No import file data was received.");
-  }
-
-  const safeFileName = String(fileName || "yard-import.xlsx");
-  const lowerFileName = safeFileName.toLowerCase();
-  let workbook;
-
-  if (lowerFileName.endsWith(".csv")) {
-    workbook = XLSX.read(buffer.toString("utf8"), {
-      type: "string",
-      raw: false,
-    });
-  } else if (lowerFileName.endsWith(".xls") || lowerFileName.endsWith(".xlsx")) {
-    workbook = XLSX.read(buffer, {
-      type: "buffer",
-      cellDates: false,
-    });
-  } else {
-    throw new Error("Upload a .csv, .xls, or .xlsx Yard Inventory import file.");
-  }
-
-  const sheetName = workbook.SheetNames[0];
-
-  if (!sheetName) {
-    throw new Error("The uploaded import file does not contain any sheets.");
-  }
-
-  const worksheet = workbook.Sheets[sheetName];
-  const rowsAsArrays = XLSX.utils.sheet_to_json(worksheet, {
-    header: 1,
-    defval: "",
-    blankrows: false,
-  });
-
-  const nonEmptyRows = rowsAsArrays.filter((row) => {
-    return Array.isArray(row) && row.some((cell) => String(cell ?? "").trim() !== "");
-  });
-
-  if (!nonEmptyRows.length) {
-    throw new Error("The uploaded import file did not contain any equipment rows.");
-  }
-
-  const firstRow = nonEmptyRows[0];
-  const hasHeaderRow = isYardImportHeaderRow(firstRow);
-  const dataRows = hasHeaderRow ? nonEmptyRows.slice(1) : nonEmptyRows;
-  const headerIndexByColumn = new Map();
-
-  if (hasHeaderRow) {
-    firstRow.forEach((cell, index) => {
-      headerIndexByColumn.set(normalizeYardImportHeader(cell), index);
-    });
-  }
-
-  const parsedRows = dataRows
-    .map((cells) => {
-      const row = {};
-
-      YARD_IMPORT_COLUMNS.forEach((column, defaultIndex) => {
-        const normalizedColumn = normalizeYardImportHeader(column);
-        const columnIndex = hasHeaderRow && headerIndexByColumn.has(normalizedColumn)
-          ? headerIndexByColumn.get(normalizedColumn)
-          : defaultIndex;
-        row[column] = cells[columnIndex] !== undefined ? String(cells[columnIndex] ?? "").trim() : "";
-      });
-
-      return row;
-    })
-    .filter((row) => {
-      return YARD_IMPORT_COLUMNS.some((column) => String(row[column] ?? "").trim() !== "");
-    });
-
-  if (!parsedRows.length) {
-    throw new Error("The uploaded import file did not contain any usable equipment rows.");
-  }
-
-  return {
-    sheetName,
-    rows: parsedRows,
-  };
-}
-
-app.get("/api/yard/import-template", (req, res) => {
-  try {
-    const importHeaders = YARD_IMPORT_COLUMNS;
-
-    const sampleRow = [
-      "AR 5000",
-      "SN123456",
-      "Forklift",
-      "Toyota",
-      "8FGCU25",
-      "2019",
-      "2450",
-      "5000 lbs",
-      "Cushion",
-      "Propane",
-      "189 in",
-      "83 in",
-      "Side Shifter",
-      "Showroom",
-      "Section 1",
-      "A",
-      "19",
-      "Available",
-      "Ready",
-      "No",
-      "",
-      "Ethan",
-      "Sample showroom placement row",
-    ];
-
-    const worksheet = XLSX.utils.aoa_to_sheet([
-      importHeaders,
-      sampleRow,
-    ]);
-
-    worksheet["!cols"] = importHeaders.map((header) => {
-      return {
-        wch: Math.max(String(header).length + 4, 16),
-      };
-    });
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Yard Import");
-
-    const buffer = XLSX.write(workbook, {
-      bookType: "xlsx",
-      type: "buffer",
-    });
-
-    res.setHeader(
-      "Content-Disposition",
-      'attachment; filename="yard-inventory-import-template.xlsx"'
-    );
-
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    );
-
-    res.send(buffer);
-  } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message || "Failed to generate yard import template.",
-    });
-  }
-});
-
-app.get("/api/yard/rows", (req, res) => {
-  try {
-    const { filePath, sheetName } = readYardInventoryWorkbook();
-    const { rows, columns } = getYardRowsAsObjects();
-
-    res.json({
-      ok: true,
-      sheetName,
-      count: rows.length,
-      columns,
-      rows,
-      filePath,
-      relativeFilePath: path.relative(__dirname, filePath),
-    });
-  } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
-  }
-});
-
-app.post("/api/yard/add-row", (req, res) => {
-  try {
-    const incomingRow = req.body?.row || req.body || {};
-    const result = appendYardInventoryRow(incomingRow);
-    const status = buildStatusSummary();
-
-    res.json({
-      ok: true,
-      action: "add-yard-row",
-      message: "Yard inventory row added successfully and saved to the yard inventory Excel file.",
-      addedAt: new Date().toISOString(),
-      result,
-      status,
-    });
-  } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
-  }
-});
-
-app.post("/api/yard/bulk-add", (req, res) => {
-  try {
-    const incomingRows = Array.isArray(req.body?.rows) ? req.body.rows : [];
-    const result = appendBulkYardInventoryRows(incomingRows);
-    const status = buildStatusSummary();
-
-    res.json({
-      ok: true,
-      action: "bulk-add-yard-rows",
-      message: "Bulk yard inventory rows added successfully and saved to the yard inventory Excel file.",
-      addedAt: new Date().toISOString(),
-      result,
-      status,
-    });
-  } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
-  }
-});
-
-
-app.post(
-  "/api/yard/upload-import",
-  express.raw({
-    type: [
-      "application/octet-stream",
-      "application/vnd.ms-excel",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "text/csv",
-      "text/plain",
-      "application/csv",
-    ],
-    limit: "25mb",
-  }),
-  (req, res) => {
-    try {
-      const rawFileName = req.get("X-File-Name") || "yard-inventory-import.xlsx";
-      const fileName = decodeURIComponent(rawFileName);
-      const parsedImport = parseYardImportRowsFromBuffer(req.body, fileName);
-      const result = appendBulkYardInventoryRows(parsedImport.rows);
-      const status = buildStatusSummary();
-
-      res.json({
-        ok: true,
-        action: "upload-yard-import-file",
-        message: "Yard Inventory import file uploaded successfully and saved to the yard inventory Excel file.",
-        fileName,
-        sourceSheetName: parsedImport.sheetName,
-        parsedRowCount: parsedImport.rows.length,
-        addedAt: new Date().toISOString(),
-        result,
-        status,
-      });
-    } catch (error) {
-      res.status(500).json({
-        ok: false,
-        error: error.message || "Failed to upload Yard Inventory import file.",
-      });
-    }
-  }
-);
-
-app.post("/api/yard/update-row", (req, res) => {
-  try {
-    const excelRowNumber = req.body?.excelRowNumber;
-    const incomingRow = req.body?.row || {};
-    const result = updateYardInventoryRow(excelRowNumber, incomingRow);
-    const status = buildStatusSummary();
-
-    res.json({
-      ok: true,
-      action: "update-yard-row",
-      message: "Selected yard inventory row updated successfully and saved to the yard inventory Excel file.",
-      updatedAt: new Date().toISOString(),
-      result,
-      status,
-    });
-  } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
-  }
-});
-
-app.post("/api/yard/delete-rows", (req, res) => {
-  try {
-    const excelRowNumbers = Array.isArray(req.body?.excelRowNumbers)
-      ? req.body.excelRowNumbers
-      : [];
-    const result = deleteYardInventoryRows(excelRowNumbers);
-    const status = buildStatusSummary();
-
-    res.json({
-      ok: true,
-      action: "delete-yard-rows",
-      message: "Selected yard inventory rows deleted successfully. Header row was kept.",
-      deletedAt: new Date().toISOString(),
-      result,
-      status,
-    });
-  } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
-  }
-});
-
-app.post("/api/sync-excel", async (req, res) => {
-  try {
-    const status = buildStatusSummary();
-
-    res.json({
-      ok: true,
-      action: "sync-excel",
-      message: "Excel sheets synced successfully.",
-      syncedAt: new Date().toISOString(),
-      status,
-    });
-  } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
-  }
-});
 
 app.get("/api/excel/columns/:type", (req, res) => {
   try {
@@ -3883,10 +2955,7 @@ app.get("/api/excel/columns/:type", (req, res) => {
       relativeFilePath: path.relative(__dirname, filePath),
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
@@ -3915,10 +2984,25 @@ app.get("/api/excel/rows/:type", (req, res) => {
       relativeFilePath: path.relative(__dirname, filePath),
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
+    sendJsonError(res, error);
+  }
+});
+
+app.post("/api/excel/validate-bulk/location", (req, res) => {
+  try {
+    const lines = getBulkLocationValidationLines(req);
+    const result = validateBulkLocationPasteLines(lines);
+
+    res.json({
+      ok: true,
+      action: "validate-bulk-location-rows",
+      message: result.allValid
+        ? "All location paste rows are valid. No Excel data was modified."
+        : "One or more location paste rows need correction. No Excel data was modified.",
+      result,
     });
+  } catch (error) {
+    sendJsonError(res, error);
   }
 });
 
@@ -3940,10 +3024,7 @@ app.post("/api/excel/add-row/:type", (req, res) => {
       status,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
@@ -3966,10 +3047,7 @@ app.post("/api/excel/bulk-add/:type", (req, res) => {
       status,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
@@ -3990,10 +3068,7 @@ app.post("/api/excel/clean/:type", (req, res) => {
       status,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
@@ -4014,10 +3089,7 @@ app.post("/api/excel/clear-table/:type", (req, res) => {
       status,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
@@ -4041,10 +3113,7 @@ app.post("/api/excel/update-row/:type", (req, res) => {
       status,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
@@ -4069,15 +3138,14 @@ app.post("/api/excel/delete-rows/:type", (req, res) => {
       status,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
 app.post("/api/printer/test-connection", async (req, res) => {
   try {
+    assertPilotPrinterActionApproved(req, "POST /api/printer/test-connection");
+
     const result = await printerClient.testConnection(req.body || {});
 
     res.json({
@@ -4085,15 +3153,14 @@ app.post("/api/printer/test-connection", async (req, res) => {
       result,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
 app.post("/api/printer/feed", async (req, res) => {
   try {
+    assertPilotPrinterActionApproved(req, "POST /api/printer/feed");
+
     const count = Number(req.body?.count || 1);
     const safeCount = Math.max(1, Math.min(count, 10));
 
@@ -4111,15 +3178,14 @@ app.post("/api/printer/feed", async (req, res) => {
       result,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
 app.post("/api/printer/terminate", async (req, res) => {
   try {
+    assertPilotPrinterActionApproved(req, "POST /api/printer/terminate");
+
     const cancelResult = await printerClient.sendToPrinter(
       buildTerminatePrintCommand(),
       req.body || {}
@@ -4133,15 +3199,14 @@ app.post("/api/printer/terminate", async (req, res) => {
       cancelResult,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
 app.post("/api/printer/pause", async (req, res) => {
   try {
+    assertPilotPrinterActionApproved(req, "POST /api/printer/pause");
+
     const pauseResult = await printerClient.sendToPrinter(
       buildPausePrintCommand(),
       req.body || {}
@@ -4155,15 +3220,14 @@ app.post("/api/printer/pause", async (req, res) => {
       pauseResult,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
 app.post("/api/printer/resume", async (req, res) => {
   try {
+    assertPilotPrinterActionApproved(req, "POST /api/printer/resume");
+
     const resumeResult = await printerClient.sendToPrinter(
       buildResumePrintCommand(),
       req.body || {}
@@ -4176,15 +3240,14 @@ app.post("/api/printer/resume", async (req, res) => {
       resumeResult,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
 app.post("/api/printer/reprint-last", async (req, res) => {
   try {
+    assertPilotPrinterActionApproved(req, "POST /api/printer/reprint-last");
+
     if (!lastCompletedPrintJob) {
       return res.status(400).json({
         ok: false,
@@ -4221,15 +3284,14 @@ app.post("/api/printer/reprint-last", async (req, res) => {
       history: printJobHistory,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
 app.post("/api/printer/calibrate", async (req, res) => {
   try {
+    assertPilotPrinterActionApproved(req, "POST /api/printer/calibrate");
+
     const zpl = printerClient.buildCalibrateCommand();
     const result = await printerClient.sendToPrinter(zpl, req.body || {});
 
@@ -4238,48 +3300,51 @@ app.post("/api/printer/calibrate", async (req, res) => {
       result,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
 app.get("/api/preview/:type", (req, res) => {
   try {
     const type = req.params.type;
-    const mod = getLabelModule(type);
-    const mode = getMode(req);
-
-    const job = mod.buildPrintJob({
-      mode,
-    });
+    const { mode, job } = buildJobForRequest(type, req);
 
     res.json({
       ok: true,
       type,
       mode,
+      pilotMaxLabels: job.summary?.pilotMaxLabels,
       summary: job.summary,
       zpl: job.zpl,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
+    sendJsonError(res, error);
+  }
+});
+
+app.post("/api/preview/:type", (req, res) => {
+  try {
+    const type = req.params.type;
+    const { mode, job } = buildJobForRequest(type, req);
+
+    res.json({
+      ok: true,
+      type,
+      mode,
+      pilotMaxLabels: job.summary?.pilotMaxLabels,
+      summary: job.summary,
+      zpl: job.zpl,
     });
+  } catch (error) {
+    sendJsonError(res, error);
   }
 });
 
 app.post("/api/preview/:type/image", async (req, res) => {
   try {
     const type = req.params.type;
-    const mod = getLabelModule(type);
-    const mode = getMode(req);
+    const { mode, job } = buildJobForRequest(type, req);
     const uniqueOnly = parseBoolean(req.body?.uniqueOnly, true);
-
-    const job = mod.buildPrintJob({
-      mode,
-    });
 
     if (!job.zpl) {
       return res.status(400).json({
@@ -4379,22 +3444,14 @@ app.post("/api/preview/:type/image", async (req, res) => {
       summary: job.summary,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
 app.post("/api/pdf/:type", async (req, res) => {
   try {
     const type = req.params.type;
-    const mod = getLabelModule(type);
-    const mode = getMode(req);
-
-    const job = mod.buildPrintJob({
-      mode,
-    });
+    const { mode, job } = buildJobForRequest(type, req);
 
     if (!job.zpl) {
       return res.status(400).json({
@@ -4438,22 +3495,19 @@ app.post("/api/pdf/:type", async (req, res) => {
 
     res.send(pdfBuffer);
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
 app.post("/api/print/:type", async (req, res) => {
   try {
     const type = req.params.type;
-    const mod = getLabelModule(type);
-    const mode = getMode(req);
+    getLabelModule(type);
 
-    const job = mod.buildPrintJob({
-      mode,
-    });
+    const mode = getMode(req);
+    assertPilotPrinterActionApproved(req, `POST /api/print/${type}`);
+
+    const { job } = buildJobForRequest(type, req);
 
     if (!job.zpl) {
       return res.status(400).json({
@@ -4465,10 +3519,12 @@ app.post("/api/print/:type", async (req, res) => {
 
     const printResult = await printerClient.sendToPrinter(
       job.zpl,
-      req.body || {}
+      getPrinterSendOptions(req, mode)
     );
 
-    const validation = buildPrintValidation(type, mode);
+    const validation = buildPrintValidation(type, mode, {
+      labels: req.body?.labels,
+    });
     const historyEntry = addPrintHistoryEntry({
       action: "print",
       type,
@@ -4507,15 +3563,14 @@ app.post("/api/print/:type", async (req, res) => {
       savedAsLastCompletedPrintJob: true,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
 app.post("/api/raw-zpl", async (req, res) => {
   try {
+    assertPilotPrinterActionApproved(req, "POST /api/raw-zpl");
+
     const zpl = req.body?.zpl;
 
     if (!zpl) {
@@ -4544,162 +3599,24 @@ app.post("/api/raw-zpl", async (req, res) => {
       savedAsLastCompletedPrintJob: true,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    sendJsonError(res, error);
   }
 });
 
-const visionTrainingDir = path.join(__dirname, "data", "vision-training");
-const visionManifestFile = path.join(visionTrainingDir, "manifest.jsonl");
+function handleListenError(protocol, port) {
+  return (error) => {
+    if (error?.code === "EADDRINUSE") {
+      console.error(
+        `${protocol} port ${port} is already in use. Stop the existing barcode app process or run npm.cmd run restart from ${__dirname}.`
+      );
+      process.exit(1);
+    }
 
-function sanitizePartNumberForPath(partNumber) {
-  const cleaned = String(partNumber || "")
-    .trim()
-    .replace(/[\\/:*?"<>|]+/g, "-")
-    .replace(/\s+/g, "_");
-
-  return cleaned || "UNKNOWN";
+    throw error;
+  };
 }
 
-function ensureVisionTrainingPartDir(partNumber) {
-  const dir = path.join(visionTrainingDir, sanitizePartNumberForPath(partNumber));
-
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, {
-      recursive: true,
-    });
-  }
-
-  return dir;
-}
-
-function countVisionTrainingImages(partNumber) {
-  const dir = path.join(visionTrainingDir, sanitizePartNumberForPath(partNumber));
-
-  if (!fs.existsSync(dir)) {
-    return 0;
-  }
-
-  return fs.readdirSync(dir).filter((name) => /\.(jpe?g|png)$/i.test(name)).length;
-}
-
-app.post("/api/vision/capture", (req, res) => {
-  try {
-    const partNumber = String(req.body?.partNumber || "").trim();
-    const imageDataUrl = String(req.body?.imageDataUrl || "");
-    const source = String(req.body?.source || "manual").trim() || "manual";
-
-    if (!partNumber) {
-      throw new Error("partNumber is required.");
-    }
-
-    const match = imageDataUrl.match(/^data:image\/(jpeg|jpg|png);base64,(.+)$/i);
-
-    if (!match) {
-      throw new Error("imageDataUrl must be a base64 data URL (image/jpeg or image/png).");
-    }
-
-    const extension = match[1].toLowerCase() === "png" ? "png" : "jpg";
-    const buffer = Buffer.from(match[2], "base64");
-
-    const dir = ensureVisionTrainingPartDir(partNumber);
-    const timestamp = new Date()
-      .toISOString()
-      .replace(/[:.]/g, "-")
-      .replace("T", "_")
-      .replace("Z", "");
-    const fileName = `${timestamp}.${extension}`;
-    const filePath = path.join(dir, fileName);
-
-    fs.writeFileSync(filePath, buffer);
-
-    fs.appendFileSync(
-      visionManifestFile,
-      JSON.stringify({
-        partNumber,
-        fileName,
-        relativePath: path.relative(__dirname, filePath),
-        source,
-        capturedAt: new Date().toISOString(),
-      }) + "\n"
-    );
-
-    res.json({
-      ok: true,
-      action: "capture-vision-training-image",
-      partNumber,
-      relativePath: path.relative(__dirname, filePath),
-      count: countVisionTrainingImages(partNumber),
-    });
-  } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
-  }
-});
-
-app.get("/api/vision/training-counts", (req, res) => {
-  try {
-    const partNumber = req.query?.partNumber ? String(req.query.partNumber) : "";
-
-    if (partNumber) {
-      return res.json({
-        ok: true,
-        partNumber,
-        count: countVisionTrainingImages(partNumber),
-      });
-    }
-
-    if (!fs.existsSync(visionTrainingDir)) {
-      return res.json({
-        ok: true,
-        counts: {},
-      });
-    }
-
-    const counts = {};
-
-    fs.readdirSync(visionTrainingDir, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .forEach((entry) => {
-        const dirPath = path.join(visionTrainingDir, entry.name);
-        counts[entry.name] = fs
-          .readdirSync(dirPath)
-          .filter((name) => /\.(jpe?g|png)$/i.test(name)).length;
-      });
-
-    res.json({
-      ok: true,
-      counts,
-    });
-  } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: error.message,
-    });
-  }
-});
-
-// Served over plain HTTP too (on purpose) -- installing the cert is the one
-// step a phone has to do *before* it can reach the HTTPS port at all, so the
-// download link can't itself require HTTPS. This is a public cert (no
-// private key), safe to serve to anyone who can already reach this LAN.
-app.get("/certs/vision-cert.cer", (req, res) => {
-  const derPath = path.join(__dirname, "certs", "vision-cert.cer");
-  if (!fs.existsSync(derPath)) {
-    res.status(404).send("No certificate generated yet. Run: node scripts/generate-cert.js");
-    return;
-  }
-  // This content-type is what makes iOS Safari offer "Install Profile"
-  // instead of just downloading the file as a blob.
-  res.setHeader("Content-Type", "application/x-x509-ca-cert");
-  res.sendFile(derPath);
-});
-
-app.listen(PORT, () => {
+const httpServer = app.listen(PORT, () => {
   console.log(`Zebra ZD421 label dashboard running at http://localhost:${PORT}`);
   console.log(`Printer target: ${getPrinterHost()}:${getPrinterPort()}`);
   console.log("Excel files used by dashboard:");
@@ -4707,28 +3624,6 @@ app.listen(PORT, () => {
   console.log(`Location:  ${excelDataFiles.location}`);
   console.log(`Equipment: ${excelDataFiles.equipment}`);
   console.log(`Parts:     ${partsInventoryFile}`);
-  console.log(`Yard:      ${yardInventoryFile}`);
 });
 
-// HTTPS listener for phone/LAN testing -- getUserMedia (camera access) refuses
-// any origin that isn't localhost or real HTTPS, so Vision Scanner needs this
-// to work from a phone. Generate certs/ once via `node scripts/generate-cert.js`;
-// if it's missing, this silently skips rather than crashing the whole app.
-const HTTPS_PORT = Number(process.env.HTTPS_PORT || 3443);
-const httpsKeyPath = path.join(__dirname, "certs", "key.pem");
-const httpsCertPath = path.join(__dirname, "certs", "cert.pem");
-
-if (fs.existsSync(httpsKeyPath) && fs.existsSync(httpsCertPath)) {
-  const httpsOptions = {
-    key: fs.readFileSync(httpsKeyPath),
-    cert: fs.readFileSync(httpsCertPath),
-  };
-
-  https.createServer(httpsOptions, app).listen(HTTPS_PORT, () => {
-    console.log(`\nHTTPS (for phone/LAN camera access) running at https://localhost:${HTTPS_PORT}`);
-    console.log("On your phone (same Wi-Fi), first visit this to install the cert, then use the https:// URL below:");
-    console.log(`  http://<this-PC's-LAN-IP>:${PORT}/certs/vision-cert.cer`);
-  });
-} else {
-  console.log(`\nNo HTTPS cert found -- phone camera testing needs one. Run: node scripts/generate-cert.js`);
-}
+httpServer.on("error", handleListenError("HTTP", PORT));

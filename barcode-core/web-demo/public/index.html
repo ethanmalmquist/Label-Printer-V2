@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>barcode-core test harness</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 780px; margin: 32px auto; padding: 0 16px; color: #1a1a1a; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  p.sub { color: #555; margin-top: 0; }
+  section { border: 1px solid #ddd; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; }
+  h2 { font-size: 1.05rem; margin-top: 0; }
+  label { display: inline-block; font-size: 0.85rem; color: #333; margin-right: 6px; }
+  input[type="text"], input[type="number"] { padding: 5px 7px; border: 1px solid #ccc; border-radius: 4px; margin-right: 10px; margin-bottom: 8px; width: 100px; }
+  button { padding: 6px 14px; border: 1px solid #333; background: #1a1a1a; color: #fff; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
+  button:hover { background: #333; }
+  .result { margin-top: 10px; font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; background: #f7f7f7; border-radius: 6px; padding: 10px 12px; white-space: pre-wrap; word-break: break-word; }
+  .error { color: #b00020; }
+  img.preview { display: block; margin-top: 10px; border: 1px solid #ccc; image-rendering: pixelated; max-width: 100%; }
+  .rows label { display: block; font-weight: normal; margin-bottom: 4px; }
+  .rows input[type="number"] { width: 60px; }
+</style>
+</head>
+<body>
+
+<h1>barcode-core test harness</h1>
+<p class="sub">Exercises the barcode-core library's three value strategies, ZPL emission, and selected-barcode resolution.</p>
+
+<section>
+  <h2>1. Stored barcode (Equipment / Product style)</h2>
+  <label>Value <input type="text" id="storedValue" value="123456789012" /></label>
+  <button onclick="testStored()">Check</button>
+  <button onclick="previewValue('storedValue')">Preview as barcode</button>
+  <div class="result" id="storedResult"></div>
+</section>
+
+<section>
+  <h2>2. Computed barcode (Location style: Aisle + Bay + Level + Bin)</h2>
+  <label>Aisle <input type="text" id="aisle" value="A" style="width:50px"/></label>
+  <label>Bay <input type="text" id="bay" value="1" style="width:50px"/></label>
+  <label>Level <input type="text" id="level" value="2" style="width:50px"/></label>
+  <label>Bin <input type="text" id="bin" value="3" style="width:50px"/></label>
+  <button onclick="testLocation()">Compute</button>
+  <button onclick="previewValue('locationValue')">Preview as barcode</button>
+  <div class="result" id="locationResult"></div>
+  <input type="hidden" id="locationValue" />
+</section>
+
+<section>
+  <h2>3. Random unique barcode (Product style)</h2>
+  <button onclick="testRandom()">Generate</button>
+  <button onclick="previewValue('randomValue')">Preview as barcode</button>
+  <div class="result" id="randomResult"></div>
+  <input type="hidden" id="randomValue" />
+</section>
+
+<section>
+  <h2>4. Selected-barcode resolution</h2>
+  <p class="sub">Sample rows: 111111111111 (Widget A), 222222222222 (Widget B), 333333333333 (Widget C).</p>
+  <div class="rows" id="selectionRows"></div>
+  <button onclick="testSelection()">Resolve</button>
+  <div class="result" id="selectionResult"></div>
+</section>
+
+<section>
+  <h2>Barcode preview</h2>
+  <p class="sub">Renders the ZPL via Labelary (requires internet access to api.labelary.com).</p>
+  <div id="previewStatus" class="result"></div>
+  <img id="previewImage" class="preview" style="display:none" />
+</section>
+
+<script>
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    const error = new Error(data.error || response.statusText);
+    error.data = data;
+    throw error;
+  }
+  return data;
+}
+
+function showResult(elementId, content, isError) {
+  const el = document.getElementById(elementId);
+  el.textContent = typeof content === "string" ? content : JSON.stringify(content, null, 2);
+  el.classList.toggle("error", !!isError);
+}
+
+async function testStored() {
+  try {
+    const value = document.getElementById("storedValue").value;
+    const data = await postJson("/api/stored", { value });
+    document.getElementById("storedValue").value = data.value;
+    showResult("storedResult", data);
+  } catch (error) {
+    showResult("storedResult", error.message, true);
+  }
+}
+
+async function testLocation() {
+  try {
+    const aisle = document.getElementById("aisle").value;
+    const bay = document.getElementById("bay").value;
+    const level = document.getElementById("level").value;
+    const bin = document.getElementById("bin").value;
+    const data = await postJson("/api/location", { aisle, bay, level, bin });
+    document.getElementById("locationValue").value = data.value;
+    showResult("locationResult", data);
+  } catch (error) {
+    showResult("locationResult", error.message, true);
+  }
+}
+
+async function testRandom() {
+  try {
+    const data = await postJson("/api/random", {});
+    document.getElementById("randomValue").value = data.value;
+    showResult("randomResult", data);
+  } catch (error) {
+    showResult("randomResult", error.message, true);
+  }
+}
+
+function renderSelectionRows(rows) {
+  const container = document.getElementById("selectionRows");
+  container.innerHTML = rows
+    .map(
+      (row, index) => `
+      <label>
+        <input type="checkbox" class="sel-check" data-barcode="${row.barcode}" ${index < 2 ? "checked" : ""}/>
+        ${row.label} (${row.barcode})
+        qty: <input type="number" class="sel-qty" data-barcode="${row.barcode}" value="1" min="1" />
+      </label>`
+    )
+    .join("");
+}
+
+async function loadSampleRows() {
+  const response = await fetch("/api/sample-rows");
+  const json = await response.json();
+  renderSelectionRows(json.rows);
+}
+
+async function testSelection() {
+  try {
+    const labels = Array.from(document.querySelectorAll(".sel-check"))
+      .filter((checkbox) => checkbox.checked)
+      .map((checkbox) => {
+        const barcode = checkbox.dataset.barcode;
+        const qtyInput = document.querySelector(`.sel-qty[data-barcode="${barcode}"]`);
+        return { barcode, quantity: Number(qtyInput.value) };
+      });
+
+    const data = await postJson("/api/selection/resolve", { labels });
+    showResult("selectionResult", data);
+  } catch (error) {
+    showResult("selectionResult", error.message, true);
+  }
+}
+
+async function previewValue(inputId) {
+  const statusEl = document.getElementById("previewStatus");
+  const imageEl = document.getElementById("previewImage");
+  const value = document.getElementById(inputId).value;
+
+  if (!value) {
+    statusEl.textContent = "Nothing to preview yet — compute/generate a value above first.";
+    statusEl.classList.add("error");
+    imageEl.style.display = "none";
+    return;
+  }
+
+  statusEl.textContent = "Rendering via Labelary...";
+  statusEl.classList.remove("error");
+  imageEl.style.display = "none";
+
+  try {
+    const data = await postJson("/api/preview", { value });
+    statusEl.textContent = data.zpl;
+    imageEl.src = data.imageDataUrl;
+    imageEl.style.display = "block";
+  } catch (error) {
+    statusEl.textContent = error.message;
+    statusEl.classList.add("error");
+  }
+}
+
+loadSampleRows();
+</script>
+
+</body>
+</html>

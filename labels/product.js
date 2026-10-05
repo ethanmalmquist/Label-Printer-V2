@@ -81,6 +81,13 @@ const REQUIRED_COLUMNS = [
   "Company Name",
   "Quantity",
 ];
+const PILOT_MAX_SELECTED_LABELS = 10;
+
+function createClientInputError(message) {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+}
 
 function readExcelRows(excelFile = EXCEL_FILE, sheetName = SHEET_NAME) {
   const workbook = XLSX.readFile(excelFile);
@@ -122,6 +129,14 @@ function parseQuantity(value) {
   }
 
   return quantity;
+}
+
+function normalizeProductBarcode(value) {
+  return sanitizeZplText(value);
+}
+
+function buildProductBarcode(row) {
+  return normalizeProductBarcode(row["Barcode 128"]);
 }
 
 function hasRequiredData(row) {
@@ -244,8 +259,155 @@ function getRowsForMode(validRows, mode) {
   throw new Error(`Unknown mode: ${mode}. Use preview, test, first, or all.`);
 }
 
+function parseSelectedQuantity(value, barcode) {
+  const quantity = Number(String(value ?? "").trim());
+
+  if (!Number.isInteger(quantity) || quantity < 1) {
+    throw createClientInputError(
+      `Quantity for ${barcode || "selected product"} must be a positive integer.`
+    );
+  }
+
+  return quantity;
+}
+
+function normalizeSelectedLabels(labels) {
+  if (!Array.isArray(labels) || labels.length === 0) {
+    throw createClientInputError("labels must be a non-empty array.");
+  }
+
+  const seenBarcodes = new Set();
+  const selectedLabels = labels.map((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw createClientInputError(`labels[${index}] must be an object.`);
+    }
+
+    const barcode = normalizeProductBarcode(item.barcode);
+
+    if (!barcode) {
+      throw createClientInputError(`labels[${index}].barcode must be provided.`);
+    }
+
+    if (seenBarcodes.has(barcode)) {
+      throw createClientInputError(
+        `Duplicate requested barcode ${barcode}. Use one entry with the desired quantity.`
+      );
+    }
+
+    seenBarcodes.add(barcode);
+
+    return {
+      barcode,
+      quantity: parseSelectedQuantity(item.quantity, barcode),
+    };
+  });
+
+  const totalLabels = selectedLabels.reduce((sum, item) => {
+    return sum + item.quantity;
+  }, 0);
+
+  if (totalLabels > PILOT_MAX_SELECTED_LABELS) {
+    throw createClientInputError(
+      `Selected product print exceeds the pilot maximum of ${PILOT_MAX_SELECTED_LABELS} labels.`
+    );
+  }
+
+  return selectedLabels;
+}
+
+function buildValidRowMap(validRows) {
+  const map = new Map();
+
+  validRows.forEach((row) => {
+    const barcode = buildProductBarcode(row);
+
+    if (!barcode) {
+      return;
+    }
+
+    if (!map.has(barcode)) {
+      map.set(barcode, []);
+    }
+
+    map.get(barcode).push(row);
+  });
+
+  return map;
+}
+
+function buildSelectedPrintJob(options = {}) {
+  const mode = "selected";
+  const excelFile = options.excelFile || EXCEL_FILE;
+  const sheetName = options.sheetName || SHEET_NAME;
+  const selectedLabels = normalizeSelectedLabels(options.labels);
+
+  const rows = readExcelRows(excelFile, sheetName);
+  const { validRows, skippedRows } = collectRows(rows);
+  const validRowMap = buildValidRowMap(validRows);
+  const rowDetails = [];
+  let totalLabels = 0;
+
+  const zpl = selectedLabels
+    .flatMap((selectedLabel) => {
+      const matchingRows = validRowMap.get(selectedLabel.barcode) || [];
+
+      if (matchingRows.length === 0) {
+        throw createClientInputError(
+          `Requested product barcode not found: ${selectedLabel.barcode}.`
+        );
+      }
+
+      if (matchingRows.length > 1) {
+        throw createClientInputError(
+          `Requested product barcode ${selectedLabel.barcode} matches ${matchingRows.length} valid Excel rows. Remove duplicates before selected printing.`
+        );
+      }
+
+      const row = matchingRows[0];
+      totalLabels += selectedLabel.quantity;
+
+      rowDetails.push({
+        excelRowNumber: row.__excelRowNumber,
+        barcode: selectedLabel.barcode,
+        productName: sanitizeZplText(row["Product Name"]),
+        partNumber: sanitizeZplText(row["Part Number"]),
+        quantityUsed: selectedLabel.quantity,
+      });
+
+      return Array.from({ length: selectedLabel.quantity }, () =>
+        buildLabel(row)
+      );
+    })
+    .join("");
+
+  return {
+    type: "product",
+    mode,
+    zpl,
+    summary: {
+      type: "product",
+      mode,
+      excelFile,
+      sheetName,
+      validRows: validRows.length,
+      skippedRows: skippedRows.length,
+      printedRows: rowDetails.length,
+      totalLabels,
+      pilotMaxLabels: PILOT_MAX_SELECTED_LABELS,
+      selectedLabelCount: rowDetails.length,
+      skippedDetails: skippedRows,
+      rowDetails,
+    },
+  };
+}
+
 function buildPrintJob(options = {}) {
   const mode = options.mode || "test";
+
+  if (mode === "selected") {
+    return buildSelectedPrintJob(options);
+  }
+
   const excelFile = options.excelFile || EXCEL_FILE;
   const sheetName = options.sheetName || SHEET_NAME;
   const forceQuantityOne = options.forceQuantityOne ?? ["test", "preview"].includes(mode);
@@ -320,8 +482,12 @@ module.exports = {
   readExcelRows,
   sanitizeZplText,
   parseQuantity,
+  normalizeProductBarcode,
+  buildProductBarcode,
+  pilotMaxSelectedLabels: PILOT_MAX_SELECTED_LABELS,
   hasRequiredData,
   getMissingColumns,
   buildLabel,
+  buildSelectedPrintJob,
   buildPrintJob,
 };

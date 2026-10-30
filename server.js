@@ -11,6 +11,7 @@ const labelModules = {
   product: require("./labels/product"),
   location: require("./labels/location"),
   equipment: require("./labels/equipment"),
+  tire: require("./labels/tire-labels"),
 };
 
 const app = express();
@@ -58,7 +59,7 @@ function getLabelModule(type) {
 
   if (!mod) {
     throw new ClientInputError(
-      `Unknown label type: ${type}. Use product, location, or equipment.`
+      `Unknown label type: ${type}. Use product, location, equipment, or tire.`
     );
   }
 
@@ -131,7 +132,7 @@ function getPrinterSendOptions(req, mode) {
 }
 
 function getPrinterHost() {
-  return printer.host || printer.ip || "192.168.1.125";
+  return printer.host || printer.ip || "192.168.1.250";
 }
 
 function getPrinterPort() {
@@ -149,6 +150,10 @@ function getLabelSize(type) {
       height: 1,
     },
     equipment: {
+      width: 3,
+      height: 1,
+    },
+    tire: {
       width: 3,
       height: 1,
     },
@@ -210,6 +215,7 @@ const excelDataFiles = {
   product: path.join(__dirname, "data", "product-labels.xlsx"),
   location: path.join(__dirname, "data", "location-labels.xlsx"),
   equipment: path.join(__dirname, "data", "equipment-labels.xlsx"),
+  tire: path.join(__dirname, "data", "tire-labels.xlsx"),
 };
 
 function getExcelDataFile(type) {
@@ -219,7 +225,7 @@ function getExcelDataFile(type) {
 
   if (!filePath) {
     throw new Error(
-      `Unknown Excel data type: ${type}. Use product, location, or equipment.`
+      `Unknown Excel data type: ${type}. Use product, location, equipment, or tire.`
     );
   }
 
@@ -228,6 +234,14 @@ function getExcelDataFile(type) {
   }
 
   return filePath;
+}
+
+function getSelectedPrintKey(type, mod, row) {
+  if (type === "tire" && typeof mod.buildTireKey === "function") {
+    return mod.buildTireKey(row);
+  }
+
+  return "";
 }
 
 function readExcelWorkbook(type) {
@@ -393,6 +407,9 @@ function shouldKeepExcelColumnAsText(header) {
     "equipment id",
     "serial",
     "serial number",
+    "tire size",
+    "tire model",
+    "color",
   ].includes(cleanHeader);
 }
 
@@ -451,6 +468,14 @@ function getRequiredExcelHeaders(type, headers) {
 
   if (type === "equipment") {
     return ["Unit Number", "Unit type", "Quantity"].filter(
+      (requiredHeader) => {
+        return Boolean(findHeader(headers, requiredHeader));
+      }
+    );
+  }
+
+  if (type === "tire") {
+    return ["Tire Size", "Tire Model", "Quantity"].filter(
       (requiredHeader) => {
         return Boolean(findHeader(headers, requiredHeader));
       }
@@ -1727,6 +1752,10 @@ function getDuplicateKeyField(type) {
     return "Generated Location Barcode";
   }
 
+  if (type === "tire") {
+    return "Tire Key";
+  }
+
   if (type === "product" || type === "equipment") {
     return "Barcode 128";
   }
@@ -1737,6 +1766,10 @@ function getDuplicateKeyField(type) {
 function getDuplicateKeyValue(type, mod, row) {
   if (type === "location" && typeof mod.buildLocationBarcode === "function") {
     return mod.buildLocationBarcode(row);
+  }
+
+  if (type === "tire" && typeof mod.buildTireKey === "function") {
+    return mod.buildTireKey(row);
   }
 
   if (type === "equipment" && typeof mod.buildEquipmentBarcode === "function") {
@@ -2962,17 +2995,26 @@ app.get("/api/excel/columns/:type", (req, res) => {
 app.get("/api/excel/rows/:type", (req, res) => {
   try {
     const type = req.params.type;
-    getLabelModule(type);
+    const mod = getLabelModule(type);
 
     const { filePath, sheetName, worksheet } = readExcelWorkbook(type);
 
     const rows = XLSX.utils.sheet_to_json(worksheet, {
       defval: "",
       blankrows: false,
-    }).map((row, index) => ({
-      __excelRowNumber: index + 2,
-      ...row,
-    }));
+    }).map((row, index) => {
+      const mapped = {
+        __excelRowNumber: index + 2,
+        ...row,
+      };
+      const selectedKey = getSelectedPrintKey(type, mod, mapped);
+
+      if (selectedKey) {
+        mapped.__selectedKey = selectedKey;
+      }
+
+      return mapped;
+    });
 
     res.json({
       ok: true,
@@ -3313,7 +3355,6 @@ app.get("/api/preview/:type", (req, res) => {
       ok: true,
       type,
       mode,
-      pilotMaxLabels: job.summary?.pilotMaxLabels,
       summary: job.summary,
       zpl: job.zpl,
     });
@@ -3331,7 +3372,6 @@ app.post("/api/preview/:type", (req, res) => {
       ok: true,
       type,
       mode,
-      pilotMaxLabels: job.summary?.pilotMaxLabels,
       summary: job.summary,
       zpl: job.zpl,
     });
@@ -3623,6 +3663,7 @@ const httpServer = app.listen(PORT, () => {
   console.log(`Product:   ${excelDataFiles.product}`);
   console.log(`Location:  ${excelDataFiles.location}`);
   console.log(`Equipment: ${excelDataFiles.equipment}`);
+  console.log(`Tire:      ${excelDataFiles.tire}`);
   console.log(`Parts:     ${partsInventoryFile}`);
 });
 

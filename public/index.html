@@ -1866,7 +1866,15 @@
                         <table class="saved-excel-table">
                           <thead>
                             <tr>
-                              <th>Select</th>
+                              <th class="select-cell">
+                                <input
+                                  type="checkbox"
+                                  id="selectedProductSelectAll"
+                                  aria-label="Select all visible product rows"
+                                  onchange="toggleAllSelectedProductBarcodes(this.checked)"
+                                  disabled
+                                />
+                              </th>
                               <th>Barcode</th>
                               <th>Excel Row</th>
                               <th>Product</th>
@@ -1945,7 +1953,15 @@
                         <table class="saved-excel-table">
                           <thead>
                             <tr>
-                              <th>Select</th>
+                              <th class="select-cell">
+                                <input
+                                  type="checkbox"
+                                  id="selectedLocationSelectAll"
+                                  aria-label="Select all visible location rows"
+                                  onchange="toggleAllSelectedLocationBarcodes(this.checked)"
+                                  disabled
+                                />
+                              </th>
                               <th>Barcode</th>
                               <th>Excel Row</th>
                               <th>Aisle</th>
@@ -2026,7 +2042,15 @@
                         <table class="saved-excel-table">
                           <thead>
                             <tr>
-                              <th>Select</th>
+                              <th class="select-cell">
+                                <input
+                                  type="checkbox"
+                                  id="selectedEquipmentSelectAll"
+                                  aria-label="Select all visible equipment rows"
+                                  onchange="toggleAllSelectedEquipmentBarcodes(this.checked)"
+                                  disabled
+                                />
+                              </th>
                               <th>Barcode</th>
                               <th>Excel Row</th>
                               <th>Unit Number</th>
@@ -2037,6 +2061,93 @@
                           <tbody id="selectedEquipmentTableBody">
                             <tr>
                               <td colspan="6">Loading saved equipment rows...</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </details>
+
+                </article>
+
+                <article class="label-card is-collapsed" data-label-job="tire">
+                  <button class="label-card-header" type="button" aria-expanded="false" onclick="selectLabelJobType('tire')">
+                    <div>
+                      <h2>Tire Labels</h2>
+                      <p>Uses tire-labels.xlsx</p>
+                    </div>
+                    <div class="label-type-icon">T</div>
+                  </button>
+
+                  <div class="button-stack">
+                    <button class="green" onclick="downloadPdf('tire')">Download PDF</button>
+                  </div>
+
+                  <details id="selectedTireDetails" class="label-advanced" open>
+                    <summary>Selected Tires</summary>
+                    <div class="selected-location-panel">
+                      <div class="selected-location-toolbar">
+                        <div class="field">
+                          <label for="selectedTireSearch">Search saved tires</label>
+                          <input
+                            id="selectedTireSearch"
+                            type="text"
+                            placeholder="Search size, model, or color..."
+                            oninput="renderSelectedTirePicker()"
+                          />
+                        </div>
+                        <button class="secondary" type="button" onclick="loadSelectedTireRows()">Refresh</button>
+                      </div>
+
+                      <div id="selectedTireMessage" class="excel-message selected-location-message">
+                        Load saved tire rows to choose specific tires.
+                      </div>
+                      <div id="selectedTireSummary" class="small">No selected tire labels.</div>
+
+                      <div class="selected-location-actions">
+                        <button
+                          id="previewSelectedTireButton"
+                          class="secondary"
+                          type="button"
+                          onclick="previewSelectedTireLabels()"
+                          disabled
+                        >
+                          Preview Selected Tires
+                        </button>
+                        <button
+                          id="printSelectedTireButton"
+                          class="primary"
+                          type="button"
+                          onclick="printSelectedTireLabels()"
+                          disabled
+                        >
+                          Print Selected Tires
+                        </button>
+                      </div>
+
+                      <div class="saved-table-wrap selected-location-table-wrap">
+                        <table class="saved-excel-table">
+                          <thead>
+                            <tr>
+                              <th class="select-cell">
+                                <input
+                                  type="checkbox"
+                                  id="selectedTireSelectAll"
+                                  aria-label="Select all visible tire rows"
+                                  onchange="toggleAllSelectedTireBarcodes(this.checked)"
+                                  disabled
+                                />
+                              </th>
+                              <th>Excel Row</th>
+                              <th>Tire Size</th>
+                              <th>Tire Model</th>
+                              <th>Color</th>
+                              <th>Qty</th>
+                            </tr>
+                          </thead>
+                          <tbody id="selectedTireTableBody">
+                            <tr>
+                              <td colspan="6">Loading saved tire rows...</td>
                             </tr>
                           </tbody>
                         </table>
@@ -2237,7 +2348,7 @@
                 </div>
                 <div class="printer-status-row">
                   <span>Target</span>
-                  <strong>192.168.1.125:9100</strong>
+                  <strong>192.168.1.250:9100</strong>
                 </div>
                 <div class="printer-status-row">
                   <span>Server</span>
@@ -2895,10 +3006,12 @@
         rows: [],
         quantities: new Map(),
       },
+      tire: {
+        rows: [],
+        quantities: new Map(),
+      },
     };
 
-    const SELECTED_LABEL_PILOT_MAX_LABELS = 10;
-    const SELECTED_LOCATION_PILOT_MAX_LABELS = SELECTED_LABEL_PILOT_MAX_LABELS;
 
     function getMode() {
       return document.getElementById("modeSelect").value;
@@ -2986,11 +3099,15 @@
           </div>
           <div class="printer-status-row">
             <span>Target</span>
-            <strong>${details.ip || "192.168.1.125"}:${details.port || 9100}</strong>
+            <strong>${
+              details.transport === "usb"
+                ? `USB (${details.queueName || "ZDesigner"})`
+                : `${details.ip || "192.168.1.250"}:${details.port || 9100}`
+            }</strong>
           </div>
           <div class="printer-status-row">
             <span>Connection</span>
-            <strong>Connected</strong>
+            <strong>${details.transport === "usb" ? "Connected via USB fallback" : "Connected"}</strong>
           </div>`;
       } else if (status === "disconnected") {
         pill.classList.add("disconnected");
@@ -3003,7 +3120,7 @@
           </div>
           <div class="printer-status-row">
             <span>Target</span>
-            <strong>192.168.1.125:9100</strong>
+            <strong>192.168.1.250:9100</strong>
           </div>
           <div class="printer-status-row">
             <span>Connection</span>
@@ -3020,7 +3137,7 @@
           </div>
           <div class="printer-status-row">
             <span>Target</span>
-            <strong>192.168.1.125:9100</strong>
+            <strong>192.168.1.250:9100</strong>
           </div>
           <div class="printer-status-row">
             <span>Connection</span>
@@ -3036,7 +3153,7 @@
           </div>
           <div class="printer-status-row">
             <span>Target</span>
-            <strong>192.168.1.125:9100</strong>
+            <strong>192.168.1.250:9100</strong>
           </div>
           <div class="printer-status-row">
             <span>Server</span>
@@ -3113,6 +3230,11 @@
       return `APPROVE ${action} ${printerTarget}`;
     }
 
+    async function getPrinterTarget() {
+      const config = await requestJson("/api/config");
+      return `${config.printer?.host || config.printer?.ip}:${config.printer?.port}`;
+    }
+
     function escapeHtml(value) {
       return String(value ?? "")
         .replace(/&/g, "&amp;")
@@ -3153,17 +3275,19 @@
     }
 
     function syncLabelJobSection(type = getSelectedExcelDataType()) {
-      const supportedTypes = new Set(["product", "location", "equipment"]);
+      const supportedTypes = new Set(["product", "location", "equipment", "tire"]);
       const activeType = supportedTypes.has(type) ? type : "product";
       const titleByType = {
         product: "Product Label Job",
         location: "Location Label Job",
         equipment: "Equipment Label Job",
+        tire: "Tire Label Job",
       };
       const managementTitleByType = {
         product: "Manage Product Excel Data",
         location: "Manage Location Excel Data",
         equipment: "Manage Equipment Excel Data",
+        tire: "Manage Tire Excel Data",
       };
       let activeCard = null;
 
@@ -3328,6 +3452,10 @@
 
       if (type === "product") {
         return ["Quantity"];
+      }
+
+      if (type === "tire") {
+        return ["Tire Size", "Tire Model", "Quantity"];
       }
 
       return ["Quantity"];
@@ -3524,12 +3652,6 @@
         }
       }
 
-      const totalLabels = labels.reduce((sum, item) => sum + item.quantity, 0);
-
-      if (totalLabels > SELECTED_LOCATION_PILOT_MAX_LABELS) {
-        return `Selected location print exceeds the pilot maximum of ${SELECTED_LOCATION_PILOT_MAX_LABELS} labels.`;
-      }
-
       return "";
     }
 
@@ -3546,14 +3668,16 @@
       }, 0);
 
       summary.textContent = labels.length
-        ? `${labels.length} selected barcode(s), ${totalLabels} total label(s). Pilot maximum: ${SELECTED_LOCATION_PILOT_MAX_LABELS}.`
-        : `No selected location labels. Pilot maximum: ${SELECTED_LOCATION_PILOT_MAX_LABELS}.`;
+        ? `${labels.length} selected barcode(s), ${totalLabels} total label(s).`
+        : "No selected location labels.";
     }
 
     function updateSelectedLocationButtons() {
       const previewButton = document.getElementById("previewSelectedLocationButton");
       const printButton = document.getElementById("printSelectedLocationButton");
       const validationError = getSelectedLocationClientValidationError();
+
+      updateSelectedLocationSelectAll();
 
       if (previewButton) {
         previewButton.disabled = Boolean(validationError);
@@ -3631,7 +3755,7 @@
 
         return `
           <tr>
-            <td>
+            <td class="select-cell">
               <input
                 type="checkbox"
                 ${checked ? "checked" : ""}
@@ -3653,7 +3777,6 @@
                 class="selected-location-qty"
                 type="number"
                 min="1"
-                max="${SELECTED_LOCATION_PILOT_MAX_LABELS}"
                 step="1"
                 value="${escapeHtml(selectedQuantity)}"
                 ${checked ? "" : "disabled"}
@@ -3718,6 +3841,57 @@
       } else {
         selectedLocationQuantities.delete(safeBarcode);
       }
+
+      setSelectedLocationMessage("Selection changed. Ready to print or preview.");
+      renderSelectedLocationPicker();
+    }
+
+    function getSelectableSelectedLocationRows() {
+      return getFilteredSelectedLocationRows().filter((row) => {
+        return (
+          Boolean(getGeneratedLocationBarcode(row)) && hasPositiveLocationQuantity(row)
+        );
+      });
+    }
+
+    function updateSelectedLocationSelectAll() {
+      const selectAll = document.getElementById("selectedLocationSelectAll");
+
+      if (!selectAll) {
+        return;
+      }
+
+      const selectableRows = getSelectableSelectedLocationRows();
+      const selectedCount = selectableRows.filter((row) => {
+        return selectedLocationQuantities.has(getGeneratedLocationBarcode(row));
+      }).length;
+
+      selectAll.disabled = selectableRows.length === 0;
+      selectAll.checked =
+        selectableRows.length > 0 && selectedCount === selectableRows.length;
+      selectAll.indeterminate =
+        selectedCount > 0 && selectedCount < selectableRows.length;
+    }
+
+    function toggleAllSelectedLocationBarcodes(checked) {
+      const selectableRows = getSelectableSelectedLocationRows();
+
+      if (!selectableRows.length) {
+        return;
+      }
+
+      selectableRows.forEach((row) => {
+        const barcode = getGeneratedLocationBarcode(row);
+
+        if (checked) {
+          selectedLocationQuantities.set(
+            barcode,
+            selectedLocationQuantities.get(barcode) || 1
+          );
+        } else {
+          selectedLocationQuantities.delete(barcode);
+        }
+      });
 
       setSelectedLocationMessage("Selection changed. Ready to print or preview.");
       renderSelectedLocationPicker();
@@ -3923,6 +4097,7 @@
         messageId: "selectedProductMessage",
         summaryId: "selectedProductSummary",
         tableBodyId: "selectedProductTableBody",
+        selectAllId: "selectedProductSelectAll",
         previewButtonId: "previewSelectedProductButton",
         printButtonId: "printSelectedProductButton",
         searchColumns: ["Barcode 128", "Product Name", "Part Number"],
@@ -3959,6 +4134,7 @@
         messageId: "selectedEquipmentMessage",
         summaryId: "selectedEquipmentSummary",
         tableBodyId: "selectedEquipmentTableBody",
+        selectAllId: "selectedEquipmentSelectAll",
         previewButtonId: "previewSelectedEquipmentButton",
         printButtonId: "printSelectedEquipmentButton",
         searchColumns: ["Barcode 128", "Unit Number", "Unit type"],
@@ -3989,8 +4165,53 @@
         return productWorkflow;
       }
 
+      const tireWorkflow = {
+        type: "tire",
+        displayName: "Tire",
+        pluralName: "Tires",
+        lowerName: "tire",
+        detailsId: "selectedTireDetails",
+        searchInputId: "selectedTireSearch",
+        messageId: "selectedTireMessage",
+        summaryId: "selectedTireSummary",
+        tableBodyId: "selectedTireTableBody",
+        selectAllId: "selectedTireSelectAll",
+        previewButtonId: "previewSelectedTireButton",
+        printButtonId: "printSelectedTireButton",
+        searchColumns: ["Tire Size", "Tire Model", "Color", "Barcode 128"],
+        hideBarcodeColumn: true,
+        get rows() {
+          return selectedLabelSelectionState.tire.rows;
+        },
+        set rows(value) {
+          selectedLabelSelectionState.tire.rows = value;
+        },
+        get quantities() {
+          return selectedLabelSelectionState.tire.quantities;
+        },
+        set quantities(value) {
+          selectedLabelSelectionState.tire.quantities = value;
+        },
+        getBarcode(row) {
+          // the server sends the exact key buildSelectedPrintJob expects:
+          // Barcode 128 when present, otherwise TIRE SIZE|TIRE MODEL|COLOR
+          return normalizeSelectedLabelBarcode(row?.__selectedKey);
+        },
+        renderCells(row) {
+          return `
+            <td>${escapeHtml(getRowValueByColumn(row, "Tire Size"))}</td>
+            <td>${escapeHtml(getRowValueByColumn(row, "Tire Model"))}</td>
+            <td>${escapeHtml(getRowValueByColumn(row, "Color"))}</td>
+          `;
+        },
+      };
+
       if (type === "equipment") {
         return equipmentWorkflow;
+      }
+
+      if (type === "tire") {
+        return tireWorkflow;
       }
 
       return null;
@@ -4059,12 +4280,6 @@
         }
       }
 
-      const totalLabels = labels.reduce((sum, item) => sum + item.quantity, 0);
-
-      if (totalLabels > SELECTED_LABEL_PILOT_MAX_LABELS) {
-        return `Selected ${workflow.lowerName} print exceeds the pilot maximum of ${SELECTED_LABEL_PILOT_MAX_LABELS} labels.`;
-      }
-
       return "";
     }
 
@@ -4082,8 +4297,8 @@
       }, 0);
 
       summary.textContent = labels.length
-        ? `${labels.length} selected barcode(s), ${totalLabels} total label(s). Pilot maximum: ${SELECTED_LABEL_PILOT_MAX_LABELS}.`
-        : `No selected ${workflow.lowerName} labels. Pilot maximum: ${SELECTED_LABEL_PILOT_MAX_LABELS}.`;
+        ? `${labels.length} selected barcode(s), ${totalLabels} total label(s).`
+        : `No selected ${workflow.lowerName} labels.`;
     }
 
     function updateSelectedLabelButtons(type) {
@@ -4091,6 +4306,8 @@
       const previewButton = workflow ? document.getElementById(workflow.previewButtonId) : null;
       const printButton = workflow ? document.getElementById(workflow.printButtonId) : null;
       const validationError = getSelectedLabelClientValidationError(type);
+
+      updateSelectedLabelSelectAll(type);
 
       if (previewButton) {
         previewButton.disabled = Boolean(validationError);
@@ -4159,10 +4376,18 @@
         return;
       }
 
-      const toggleFunction =
-        type === "product" ? "toggleSelectedProductBarcode" : "toggleSelectedEquipmentBarcode";
-      const quantityFunction =
-        type === "product" ? "updateSelectedProductQuantity" : "updateSelectedEquipmentQuantity";
+      const toggleFunctionByType = {
+        product: "toggleSelectedProductBarcode",
+        equipment: "toggleSelectedEquipmentBarcode",
+        tire: "toggleSelectedTireBarcode",
+      };
+      const quantityFunctionByType = {
+        product: "updateSelectedProductQuantity",
+        equipment: "updateSelectedEquipmentQuantity",
+        tire: "updateSelectedTireQuantity",
+      };
+      const toggleFunction = toggleFunctionByType[type];
+      const quantityFunction = quantityFunctionByType[type];
 
       body.innerHTML = filteredRows.map((row, index) => {
         const excelRowNumber = getSavedRowExcelNumber(row, index);
@@ -4175,7 +4400,7 @@
 
         return `
           <tr>
-            <td>
+            <td class="select-cell">
               <input
                 type="checkbox"
                 ${checked ? "checked" : ""}
@@ -4183,7 +4408,11 @@
                 onchange="${toggleFunction}('${safeBarcode}', this.checked)"
               />
             </td>
-            <td><strong>${escapeHtml(barcode || "Incomplete")}</strong></td>
+            ${
+              workflow.hideBarcodeColumn
+                ? ""
+                : `<td><strong>${escapeHtml(barcode || "Incomplete")}</strong></td>`
+            }
             <td>${excelRowNumber}</td>
             ${workflow.renderCells(row)}
             <td>
@@ -4191,7 +4420,6 @@
                 class="selected-location-qty"
                 type="number"
                 min="1"
-                max="${SELECTED_LABEL_PILOT_MAX_LABELS}"
                 step="1"
                 value="${escapeHtml(selectedQuantity)}"
                 ${checked ? "" : "disabled"}
@@ -4264,6 +4492,64 @@
       } else {
         workflow.quantities.delete(safeBarcode);
       }
+
+      setSelectedLabelMessage(type, "Selection changed. Ready to print or preview.");
+      renderSelectedLabelPicker(type);
+    }
+
+    function getSelectableSelectedLabelRows(type) {
+      const workflow = getSelectedLabelWorkflow(type);
+
+      if (!workflow) {
+        return [];
+      }
+
+      return getFilteredSelectedLabelRows(type).filter((row) => {
+        return (
+          Boolean(workflow.getBarcode(row)) && hasPositiveSelectedLabelQuantity(row)
+        );
+      });
+    }
+
+    function updateSelectedLabelSelectAll(type) {
+      const workflow = getSelectedLabelWorkflow(type);
+      const selectAll = workflow
+        ? document.getElementById(workflow.selectAllId)
+        : null;
+
+      if (!workflow || !selectAll) {
+        return;
+      }
+
+      const selectableRows = getSelectableSelectedLabelRows(type);
+      const selectedCount = selectableRows.filter((row) => {
+        return workflow.quantities.has(workflow.getBarcode(row));
+      }).length;
+
+      selectAll.disabled = selectableRows.length === 0;
+      selectAll.checked =
+        selectableRows.length > 0 && selectedCount === selectableRows.length;
+      selectAll.indeterminate =
+        selectedCount > 0 && selectedCount < selectableRows.length;
+    }
+
+    function toggleAllSelectedLabelBarcodes(type, checked) {
+      const workflow = getSelectedLabelWorkflow(type);
+      const selectableRows = getSelectableSelectedLabelRows(type);
+
+      if (!workflow || !selectableRows.length) {
+        return;
+      }
+
+      selectableRows.forEach((row) => {
+        const barcode = workflow.getBarcode(row);
+
+        if (checked) {
+          workflow.quantities.set(barcode, workflow.quantities.get(barcode) || 1);
+        } else {
+          workflow.quantities.delete(barcode);
+        }
+      });
 
       setSelectedLabelMessage(type, "Selection changed. Ready to print or preview.");
       renderSelectedLabelPicker(type);
@@ -4492,6 +4778,42 @@
 
     function toggleSelectedEquipmentBarcode(barcode, checked) {
       toggleSelectedLabelBarcode("equipment", barcode, checked);
+    }
+
+    function toggleAllSelectedProductBarcodes(checked) {
+      toggleAllSelectedLabelBarcodes("product", checked);
+    }
+
+    function toggleAllSelectedEquipmentBarcodes(checked) {
+      toggleAllSelectedLabelBarcodes("equipment", checked);
+    }
+
+    function renderSelectedTirePicker() {
+      renderSelectedLabelPicker("tire");
+    }
+
+    function loadSelectedTireRows() {
+      return loadSelectedLabelRows("tire");
+    }
+
+    function toggleSelectedTireBarcode(barcode, checked) {
+      toggleSelectedLabelBarcode("tire", barcode, checked);
+    }
+
+    function toggleAllSelectedTireBarcodes(checked) {
+      toggleAllSelectedLabelBarcodes("tire", checked);
+    }
+
+    function updateSelectedTireQuantity(barcode, value) {
+      updateSelectedLabelQuantity("tire", barcode, value);
+    }
+
+    function previewSelectedTireLabels() {
+      return previewSelectedLabels("tire");
+    }
+
+    function printSelectedTireLabels() {
+      return printSelectedLabels("tire");
     }
 
     function updateSelectedProductQuantity(barcode, value) {
@@ -7115,6 +7437,8 @@
           updatePrinterStatus("connected", {
             ip: data.result.ip,
             port: data.result.port,
+            transport: data.result.transport,
+            queueName: data.result.queueName,
           });
 
           if (showModal) {
@@ -7154,16 +7478,36 @@
 
     async function feedLabel() {
       clearGallery();
-      setOutput("Feeding one blank label...");
 
       try {
+        const printerTarget = await getPrinterTarget();
+        const pilotPrinterApproval = getPilotPrinterApprovalPhrase(
+          "POST /api/printer/feed",
+          printerTarget
+        );
+        const confirmed = confirm(
+          `Feed one blank label?\n\n` +
+            `Printer: ${printerTarget}\n` +
+            `Endpoint: POST /api/printer/feed\n\n` +
+            `This advances one blank label. It does not print any content.`
+        );
+
+        if (!confirmed) {
+          setOutput("Label feed cancelled.");
+          return;
+        }
+
+        setOutput("Feeding one blank label...");
+
         const data = await requestJson("/api/printer/feed", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "X-Pilot-Printer-Approval": pilotPrinterApproval,
           },
           body: JSON.stringify({
             count: 1,
+            pilotPrinterApproval,
           }),
         });
 
@@ -7175,15 +7519,33 @@
 
     async function pausePrint() {
       clearGallery();
-      setOutput("Sending pause command...");
 
       try {
+        const printerTarget = await getPrinterTarget();
+        const pilotPrinterApproval = getPilotPrinterApprovalPhrase(
+          "POST /api/printer/pause",
+          printerTarget
+        );
+        const confirmed = confirm(
+          `Pause the printer?\n\n` +
+            `Printer: ${printerTarget}\n` +
+            `Endpoint: POST /api/printer/pause`
+        );
+
+        if (!confirmed) {
+          setOutput("Pause cancelled.");
+          return;
+        }
+
+        setOutput("Sending pause command...");
+
         const data = await requestJson("/api/printer/pause", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "X-Pilot-Printer-Approval": pilotPrinterApproval,
           },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ pilotPrinterApproval }),
         });
 
         setOutput(data);
@@ -7194,15 +7556,34 @@
 
     async function resumePrint() {
       clearGallery();
-      setOutput("Sending resume command...");
 
       try {
+        const printerTarget = await getPrinterTarget();
+        const pilotPrinterApproval = getPilotPrinterApprovalPhrase(
+          "POST /api/printer/resume",
+          printerTarget
+        );
+        const confirmed = confirm(
+          `Resume the printer?\n\n` +
+            `Printer: ${printerTarget}\n` +
+            `Endpoint: POST /api/printer/resume\n\n` +
+            `Any paused job will continue printing.`
+        );
+
+        if (!confirmed) {
+          setOutput("Resume cancelled.");
+          return;
+        }
+
+        setOutput("Sending resume command...");
+
         const data = await requestJson("/api/printer/resume", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "X-Pilot-Printer-Approval": pilotPrinterApproval,
           },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ pilotPrinterApproval }),
         });
 
         setOutput(data);
@@ -7214,23 +7595,33 @@
     async function terminatePrint() {
       clearGallery();
 
-      const confirmed = confirm(
-        "Terminate the current queued print job? The label already moving may still finish."
-      );
-
-      if (!confirmed) {
-        return;
-      }
-
-      setOutput("Sending terminate command...");
-
       try {
+        const printerTarget = await getPrinterTarget();
+        const pilotPrinterApproval = getPilotPrinterApprovalPhrase(
+          "POST /api/printer/terminate",
+          printerTarget
+        );
+        const confirmed = confirm(
+          `Terminate the current queued print job?\n\n` +
+            `Printer: ${printerTarget}\n` +
+            `Endpoint: POST /api/printer/terminate\n\n` +
+            `The label already moving may still finish.`
+        );
+
+        if (!confirmed) {
+          setOutput("Terminate cancelled.");
+          return;
+        }
+
+        setOutput("Sending terminate command...");
+
         const data = await requestJson("/api/printer/terminate", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "X-Pilot-Printer-Approval": pilotPrinterApproval,
           },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ pilotPrinterApproval }),
         });
 
         setOutput(data);
@@ -7242,23 +7633,32 @@
     async function reprintLastJob() {
       clearGallery();
 
-      const confirmed = confirm(
-        "Reprint the previous completed print job exactly as it was last sent?"
-      );
-
-      if (!confirmed) {
-        return;
-      }
-
-      setOutput("Reprinting previous completed print job...");
-
       try {
+        const printerTarget = await getPrinterTarget();
+        const pilotPrinterApproval = getPilotPrinterApprovalPhrase(
+          "POST /api/printer/reprint-last",
+          printerTarget
+        );
+        const confirmed = confirm(
+          `Reprint the previous completed print job exactly as it was last sent?\n\n` +
+            `Printer: ${printerTarget}\n` +
+            `Endpoint: POST /api/printer/reprint-last`
+        );
+
+        if (!confirmed) {
+          setOutput("Reprint cancelled.");
+          return;
+        }
+
+        setOutput("Reprinting previous completed print job...");
+
         const data = await requestJson("/api/printer/reprint-last", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "X-Pilot-Printer-Approval": pilotPrinterApproval,
           },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ pilotPrinterApproval }),
         });
 
         setOutput(data);
@@ -7271,23 +7671,33 @@
     async function calibratePrinter() {
       clearGallery();
 
-      const confirmed = confirm(
-        "Calibrate media? The printer may feed several labels."
-      );
-
-      if (!confirmed) {
-        return;
-      }
-
-      setOutput("Sending calibration command...");
-
       try {
+        const printerTarget = await getPrinterTarget();
+        const pilotPrinterApproval = getPilotPrinterApprovalPhrase(
+          "POST /api/printer/calibrate",
+          printerTarget
+        );
+        const confirmed = confirm(
+          `Calibrate media?\n\n` +
+            `Printer: ${printerTarget}\n` +
+            `Endpoint: POST /api/printer/calibrate\n\n` +
+            `The printer may feed several labels.`
+        );
+
+        if (!confirmed) {
+          setOutput("Calibration cancelled.");
+          return;
+        }
+
+        setOutput("Sending calibration command...");
+
         const data = await requestJson("/api/printer/calibrate", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "X-Pilot-Printer-Approval": pilotPrinterApproval,
           },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ pilotPrinterApproval }),
         });
 
         setOutput(data);
@@ -7307,6 +7717,10 @@
 
       if (type === "equipment") {
         return "Equipment";
+      }
+
+      if (type === "tire") {
+        return "Tire";
       }
 
       return type;

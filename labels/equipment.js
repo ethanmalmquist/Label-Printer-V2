@@ -43,7 +43,6 @@ const REQUIRED_COLUMNS = [
   "Company Name",
   "Quantity",
 ];
-const PILOT_MAX_SELECTED_LABELS = 10;
 
 function createClientInputError(message) {
   const error = new Error(message);
@@ -267,16 +266,6 @@ function normalizeSelectedLabels(labels) {
     };
   });
 
-  const totalLabels = selectedLabels.reduce((sum, item) => {
-    return sum + item.quantity;
-  }, 0);
-
-  if (totalLabels > PILOT_MAX_SELECTED_LABELS) {
-    throw createClientInputError(
-      `Selected equipment print exceeds the pilot maximum of ${PILOT_MAX_SELECTED_LABELS} labels.`
-    );
-  }
-
   return selectedLabels;
 }
 
@@ -358,7 +347,6 @@ function buildSelectedPrintJob(options = {}) {
       skippedRows: skippedRows.length,
       printedRows: rowDetails.length,
       totalLabels,
-      pilotMaxLabels: PILOT_MAX_SELECTED_LABELS,
       selectedLabelCount: rowDetails.length,
       skippedDetails: skippedRows,
       rowDetails,
@@ -449,7 +437,6 @@ module.exports = {
   parseQuantity,
   normalizeEquipmentBarcode,
   buildEquipmentBarcode,
-  pilotMaxSelectedLabels: PILOT_MAX_SELECTED_LABELS,
   hasRequiredData,
   getMissingColumns,
   buildLabel,
